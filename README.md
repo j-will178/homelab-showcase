@@ -2,16 +2,19 @@
 
 A rotating **rack dashboard** for my homelab, plus the plumbing that keeps it and four machines current: per-machine agents that report every 10 seconds, a pull-based deploy system where **one button updates every host**, and backup jobs defined in git and applied automatically. It covers a FreeBSD firewall, a Linux management box and two Windows Server storage servers.
 
-**▶ [Live demo](https://j-will178.github.io/homelab-showcase/)**: the real UI on simulated data, built and published by CI on every push. Use ← → to switch screens, and press *Deploy all* on the Deployments screen.
+[![Open the live demo: the dashboard cycling through its screens, then a Deploy all rollout](screenshots/demo.webp)](https://j-will178.github.io/homelab-showcase/)
 
-![Compute screen](screenshots/compute.png)
+**[▶ Open the live demo](https://j-will178.github.io/homelab-showcase/)**: the real UI on simulated data, built and published by CI on every push. Use ← → to switch screens, and press *Deploy all* on the Deployments screen.
 
 ## What's on the screens
 
 | | |
 |---|---|
 | ![WAN noise](screenshots/noise-map.png) **WAN noise.** Live world map of unsolicited inbound traffic blocked by OPNsense (syslog → GeoIP → SSE), with day/night shading. | ![Drive health](screenshots/drive-health.png) **Drive health.** SMART for every drive in the rack (SATA, SAS behind an HBA, NVMe), with wear, temperature limits read from each drive, and error-log baselines. |
-| ![Scheduled tasks](screenshots/scheduled-tasks.png) **Scheduled tasks.** Backup mirror jobs: last result, data copied and removed, failures, 30-run history, and *overdue* measured against each job's schedule. | ![Deployments](screenshots/deployments.png) **Deployments.** Per-host commit, last check, result and git version, plus **Deploy all** with live per-host progress. |
+| ![Compute](screenshots/compute.png) **Compute.** CPU with a per-core strip, memory, GPU (including encoder use for Jellyfin), network and disk I/O, top processes, and 1-hour charts, from agents reporting every 10 seconds. | ![Scheduled tasks](screenshots/scheduled-tasks.png) **Scheduled tasks.** Backup mirror jobs: last result, data copied and removed, failures, 30-run history, and *overdue* measured against each job's schedule. |
+
+![Deployments](screenshots/deployments.png)
+**Deployments.** Per-host commit, last check, result and git version, plus **Deploy all** with live per-host progress (shown in the animation above).
 
 ## Architecture
 
@@ -78,4 +81,4 @@ python3 dashboard/collector.py --demo    # then open http://localhost:8080
 
 This is a public export of my private homelab repo. Its `showcase/export.py` copies an allowlist of folders on every merge, and refuses to publish anything that looks like a secret: keys, tokens, public IPs, personal emails or machine names. History starts at the export; the private repo has the full PR-by-PR history. Built with [Claude Code](https://claude.com/claude-code) as a pair programmer: I set direction and constraints and reviewed and ran everything on real hardware; most of the code was written in that pairing.
 
-Exported from commit `5a85497` · [MIT License](LICENSE)
+Exported from commit `f1c0bb2` · [MIT License](LICENSE)

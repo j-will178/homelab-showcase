@@ -7,7 +7,9 @@
   'use strict';
   const realFetch = window.fetch.bind(window);
   const t0 = Date.now();
-  const elapsed = () => (Date.now() - t0) / 1000;
+  // ?speed=4 plays the demo 4x faster (used to record the README animation).
+  const SPEED = Math.max(1, Number(new URLSearchParams(location.search).get('speed')) || 1);
+  const elapsed = () => SPEED * (Date.now() - t0) / 1000;
   const clone = o => JSON.parse(JSON.stringify(o));
   let data = null;
   const ready = realFetch('demo-data.json').then(r => r.json()).then(d => { data = d; });
@@ -48,7 +50,7 @@
   function deployNow() {
     const d = clone(data.deploy);
     if (deployAt === null) return d;
-    const age = (Date.now() - deployAt) / 1000;
+    const age = SPEED * (Date.now() - deployAt) / 1000;
     d.request = { id: Math.floor(deployAt / 1000), age_s: age, retry_in_s: Math.max(0, Math.round(60 - age)) };
     d.reference_commit = NEW.commit;
     for (const h of d.hosts) {
