@@ -1,0 +1,39 @@
+{
+  "tasks": {
+    "homeshare-to-archive": {
+      "host": "homeshare",
+      "description": "Monthly mirror of the Main pool to the SAS archive",
+      "source": "D:\\HomeShare",
+      "destination": "A:\\HomeShare",
+      "schedule": {
+        "monthly": {
+          "days": [
+            1
+          ],
+          "at": "03:00"
+        }
+      },
+      "time_limit_hours": 24,
+      "enabled": true
+    },
+    "homeshare-to-backup": {
+      "host": "homeshare",
+      "description": "Daily mirror of the Main pool to backup-compute",
+      "source": "D:\\HomeShare",
+      "destination": "\\\\backup-compute.home.arpa\\HomeShareBackup",
+      "share_access": {
+        "provider": "backup-compute",
+        "share": "HomeShareBackup",
+        "account": "svc-backup",
+        "key_epoch": 1
+      },
+      "schedule": {
+        "daily": {
+          "at": "02:00"
+        }
+      },
+      "time_limit_hours": 12,
+      "enabled": true
+    }
+  }
+}

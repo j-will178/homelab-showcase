@@ -1,0 +1,10 @@
+[Unit]
+Description=Push this machine's SMART data to the rack dashboard
+After=network-online.target rack-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: smartctl needs raw device access.
+ExecStart=/usr/bin/python3 /opt/rack-dashboard/agents/smart_agent.py --url http://127.0.0.1:8080/api/smart --token-file /etc/rack-dashboard/agent-token --name optiplex-management
+TimeoutStartSec=5min

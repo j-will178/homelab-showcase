@@ -1,0 +1,181 @@
+# Rack Dashboard
+
+A full-screen slideshow for the rack monitor, served by the OptiPlex. It rotates through screens every 5 minutes, and you can jump between them with the keyboard.
+
+| # | Screen | Data source |
+|---|---|---|
+| 1 | **WAN noise**: live map of inbound traffic OPNsense blocks | OPNsense filterlog → syslog UDP 5514 |
+| 2 | **Drive health**: SMART status of every drive in the rack | Agents on each machine → `POST /api/smart` (every 15 min) |
+| 3 | **Compute**: CPU (with a per-core strip), memory, GPU, network, disk I/O, top processes, uptime, pending reboot, with charts of the last hour | Agents on each machine → `POST /api/metrics` (every 10 s) |
+| 4 | **Scheduled tasks**: every task in Task Scheduler's `\Homelab\` folder: state, last/next run, overdue; for backup mirror jobs also files/bytes copied and removed, failures and a 30-run history | Agents on Windows hosts, about once a minute, in the metrics posts |
+| 5 | **Deployments**: branch, commit, last check/change, result and git version per host, plus a **Deploy all** button | The same metrics posts carry each host's updater status |
+
+```
+OPNsense ──syslog/UDP 5514──────────────┐
+                                        ▼
+SMART agents ──HTTP POST /api/smart──▶ collector.py (OptiPlex :8080) ──▶ browser (kiosk on rack screen)
+  (homeshare, backup-compute, OptiPlex, OPNsense)
+```
+
+Everything is served locally (no CDNs). The only Python dependency is `maxminddb`.
+
+## Keys and URL options
+
+| Key | Action |
+|---|---|
+| **→** / **Space** / **PageDown** | Next screen |
+| **←** / **PageUp** | Previous screen |
+| **1**–**9** | Jump to screen (1 noise, 2 drives, 3 compute, 4 tasks, 5 deployments) |
+| **R** | Pause / resume rotation |
+| **F** | Fullscreen |
+| **P** / **Shift+P** | Next / previous map projection (noise screen) |
+| **H** | Hide the map side panel (noise screen) |
+
+Screens change with a **halftone wave**: a band of dots riding a moving wave/noise surface, shaded by its slope, sweeps across behind a drifting dark fog; the fog fades in and out while the dots stay crisp, and the screen switches underneath at full cover (~2.2 s). `?transition=fade` or `?transition=none` turn it down or off; it also drops to a plain switch automatically if the OS asks for reduced motion.
+
+URL: `?interval=120` (seconds per screen, `0` = no rotation) · `?screen=smart` / `compute` / `tasks` / `deploy` (start screen) · `?projection=mollweide` · `?fade=120` · `?home=lat,lon` · `?transition=wave|fade|none` · `?daynight=0` · `?demo=1`
+
+Wall display: `chromium --kiosk "http://optiplex-management.home.arpa:8080/?projection=robinson"`
+
+The map shows **day and night** from the real sun position: a faint glow centred under the sun, twilight in 3° steps from sunset to astronomical night, a dotted terminator line and a small sun marker. It updates every minute; toggle it with **Day / night** in the panel.
+
+The noise map keeps running while another screen is showing, so pings don't pause. The screen indicator at the bottom fades after a few seconds and comes back on mouse move or keypress.
+
+## Try it in demo mode
+
+```bash
+python3 collector.py --demo     # simulated traffic + four fake hosts' drives
+# open http://localhost:8080
+```
+
+## Deployment
+
+On the OptiPlex, this folder is deployed automatically by [`deploy/`](../deploy/) to `/opt/rack-dashboard` and runs as `rack-dashboard.service`. The same deploy migrated the old `noise-map.service`. It also installs the OptiPlex's own SMART agent (`rack-smart-agent.timer`) and generates the agent token at `/etc/rack-dashboard/agent-token`.
+
+Local flags (`--home`, a different `--iface`, host order) go in a drop-in, so deploys never overwrite them:
+```bash
+sudo systemctl edit rack-dashboard
+# [Service]
+# ExecStart=
+# ExecStart=/opt/rack-dashboard/.venv/bin/python /opt/rack-dashboard/collector.py --db /opt/rack-dashboard/dbip-city-lite.mmdb --iface igb0 --smart-order opnsense,optiplex-management,homeshare,backup-compute --home LAT,LON
+```
+
+### GeoIP database
+
+**DB-IP City Lite** (free, no account, CC BY 4.0, attribution shown on the page): download the current month's `.mmdb.gz` from https://db-ip.com/db/download/ip-to-city-lite, then:
+```bash
+gunzip dbip-city-lite-*.mmdb.gz && sudo mv dbip-city-lite-*.mmdb /opt/rack-dashboard/dbip-city-lite.mmdb
+sudo systemctl restart rack-dashboard
+```
+It's updated monthly. **MaxMind GeoLite2-City** also works (free account): add `--attribution maxmind`.
+
+### OPNsense syslog (noise screen)
+
+1. **System → Settings → Logging → Remote → +**: Enabled ✓ · Transport **UDP(4)** · Applications **filter (filterlog)** · Hostname: the OptiPlex's IP · Port **5514**
+2. **Firewall → Settings → Advanced**: enable **"Log packets matched from the default block rules"**.
+3. On the OptiPlex, allow UDP 5514 from the firewall only, and TCP 8080 from your LAN.
+
+### SMART agents (drive health screen)
+
+See [`agents/README.md`](agents/README.md): Windows (homeshare and 2), OPNsense, and the OptiPlex (installed automatically).
+
+## Compute screen
+
+One card per host, refreshed every 5 s from samples the agents send every 10 seconds (each averaged over its 10 s):
+
+- **CPU**: utilisation with a 1-hour chart, a strip with one cell per logical CPU (40 on backup-compute), load average (Linux/FreeBSD), and temperature where the OS exposes it natively (optiplex-management, opnsense; not Windows yet).
+- **Memory**: used/total with chart and bar; swap (Linux/FreeBSD) or commit charge (Windows).
+- **GPU**: only shown if `nvidia-smi` is present. Utilisation, VRAM, temperature, power, and **encoder/decoder** use (Jellyfin transcodes).
+- **Network**: in/out chart and the busiest NICs with link speed. **Disk I/O**: read/write chart, totals, busiest disk.
+- **Top processes** by CPU, as a share of the whole machine, so they compare directly with the CPU %.
+- Badges: **reboot pending** (Windows Update / CBS, Debian `reboot-required`), **agent outdated**, **stale** (no sample for 60 s).
+
+Warnings: CPU ≥ 95 %; memory ≥ 90 % (critical 97 %); swap ≥ 50 % used; CPU temperature ≥ 85 °C (critical 95 °C); GPU ≥ 90 °C. Rules are in `metrics.py`.
+
+History is a fixed 360-point buffer per host (1 hour at 10 s) **in memory only**: it can't grow, and it starts over when the dashboard restarts.
+
+## Scheduled tasks screen
+
+One card per task in Task Scheduler's **`\Homelab\`** folder on any Windows host (put a task there and it shows up). Mirror jobs from `backups/` add their own results: last run (succeeded / warnings / failed / aborted), files and bytes copied and removed, failures with the first error lines, and a bar per run for the last 30 runs (height = data copied).
+
+Health: **failed** if the last run failed or was aborted; **overdue** if it hasn't run within its longest normal gap + 10% + 1 h. For mirror jobs that gap comes from the job's schedule in `backups/tasks.json` (e.g. 31 days for monthly on day 1, 17 for days 1 and 15), which the card also shows ("daily at 02:00"); other tasks fall back to an estimate from their last and next run; **running**, **disabled**, or **not run yet**. Tasks that aren't mirror jobs use Task Scheduler's last result (0 = ok). See `backups/README.md`.
+
+### Static demo (GitHub Pages)
+
+`python3 dashboard/tools/build_static_demo.py OUT_DIR` builds a backend-free copy of the dashboard. It's the real UI plus `demo-api.js`, which answers `api/*` from a snapshot of the collector's own demo data, replays the compute history every 10 s, and plays a rollout when *Deploy all* is pressed. The noise map simulates its traffic in the browser already. Used by the public showcase (see the top-level README).
+
+### Credential relay
+
+`/api/creds/key` and `/api/creds/secret` (agent token required) relay the backup share credential between hosts: a public key one way, ciphertext the other. The dashboard never sees the password (see `backups/README.md`, *Share credential*). Stored in `creds.json` in the state directory (mode 600).
+
+## Deployments screen
+
+Every host updates itself from `main` on its own (OptiPlex every 2 min, the others every 15 min). To roll out **now**, press **Deploy all** on the Deployments screen, or from any LAN machine:
+
+```bash
+curl -X POST -H 'X-Rack-Deploy: 1' http://optiplex-management.home.arpa:8080/api/deploy
+```
+
+Each host's metrics loop sees the request within 10 s and brings its normal update forward: optiplex-management starts `homelab-deploy`; homeshare, backup-compute and opnsense clear their 15-minute stamp, so their every-minute job does update + SMART within a minute. One row per host, from a status file each host's updater writes after every run (`/var/lib/homelab-deploy/status.json`, `deploy-status.json`):
+
+- **Branch** and **commit** (with its subject and age). The commit is amber if it differs from optiplex-management's: that host is the dashboard and checks every 2 min, so its commit is the reference.
+- **Last check** (with schedule and when the next one is due) and **last change** (when it last actually installed something).
+- **Result**: up to date / deployed, or *failed* (fetch or deploy error) / *rejected* (a changed file failed its syntax check and wasn't installed).
+- **Git** client version and agent version.
+- While a host's updater is working: **running 1m 39s** and the step it's on (*pulling from GitHub*, *applying scheduled tasks*, *running tests and restarting what changed*), so a long run doesn't look stuck. After an hour it says *stuck?*.
+- After **Deploy all**: per-host progress (*updating…* → *done*), and the header counts how many have finished.
+
+There is no login: the request can't run anything, it only makes hosts do their normal update from `main` sooner. It's limited to once a minute, and the `X-Rack-Deploy` header stops other websites from triggering it through your browser. The last request is kept in the state directory, so it survives the dashboard restarting during its own deploy.
+
+## Drive health rules
+
+Each drive gets **OK / Warning / Critical / Unknown**. A host card takes its worst drive's level. A host turns **stale** (dimmed, amber) when it hasn't reported in 45 minutes (`--smart-stale`).
+
+| | Warning | Critical |
+|---|---|---|
+| SMART overall health | attribute below threshold in the past · self-test errors | **FAILED** · pre-fail attribute at threshold |
+| ATA device error log | **new** entries since the drive was first seen (old entries show as a grey note) | – |
+| SATA HDD/SSD | reallocated sectors > 0 · reported uncorrectable > 0 · CRC errors > 0 (cable/backplane) | pending > 0 · offline uncorrectable > 0 · reallocated ≥ 100 |
+| SAS | grown defects > 0 | uncorrected read/write/verify errors > 0 · grown defects ≥ 100 |
+| NVMe | – | critical warning flags · spare below threshold · media errors > 0 |
+| SSD wear | ≥ 75 % of rated endurance used | ≥ 90 % |
+| Temperature: drive reports its rated max (SCT / device statistics) | 10 °C below the rated max | at the rated max |
+| Temperature: otherwise | HDD 50 °C · SSD 60 °C · NVMe 70 °C | HDD 58 °C · SSD 70 °C · NVMe 80 °C |
+| Windows | disk HealthStatus *Warning* | *Unhealthy* · uncorrected errors > 0 |
+
+Rules live in `smart.py`. Agents send raw `smartctl` JSON and the collector evaluates it on read, so a rule change applies to existing data as soon as it's deployed.
+
+Agent notes (e.g. a device `smartctl` can't open) are shown under the host but don't change its color.
+
+**Error-log baselines.** A drive's device error log never clears, so a drive with a few errors from years ago would stay amber forever. The dashboard records each drive's error count (by serial) the first time it sees the drive, in `/var/lib/rack-dashboard/baselines.json`. It warns only when the count goes up. After you've looked into a warning and want to accept the new count as normal, re-baseline:
+```bash
+sudo systemctl stop rack-dashboard
+sudo python3 -c "import json; p='/var/lib/rack-dashboard/baselines.json'; d=json.load(open(p)); d.pop('SERIAL', None); json.dump(d, open(p,'w'))"   # or delete the file to re-baseline every drive
+sudo systemctl start rack-dashboard
+```
+
+## Options
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--db PATH` | – | GeoIP `.mmdb` (required unless `--demo`) |
+| `--iface` | `igb0` | WAN interface to show (`''` = all interfaces) |
+| `--udp-port` / `--http-port` | 5514 / 8080 | Listen ports |
+| `--interval` | 300 | Default seconds per screen (`0` = no rotation) |
+| `--token-file` | `$CREDENTIALS_DIRECTORY/agent-token` | SMART agents' bearer token. No token = `/api/smart` rejects reports |
+| `--state-dir` | `$STATE_DIRECTORY` or `./state` | Where the latest report per host is kept |
+| `--smart-order` | – | Host display order, e.g. `opnsense,optiplex-management,homeshare,backup-compute` |
+| `--smart-stale` | 45 | Minutes without a report before a host is marked stale |
+| `--home lat,lon` | – | Default home for map arcs (or tick **Arcs to home** and click the map) |
+| `--include-pass` | off | Also show inbound traffic that was allowed |
+| `--dedupe` | 3 s | Ignore repeats of the same source + port within this window |
+| `--max-rate` | 40/s | Cap on map events sent to browsers during floods |
+| `--attribution` | `dbip` | `dbip`, `maxmind` or `none` (page footer credit) |
+| `--demo` | off | Simulated data, nothing else needed |
+
+## Notes
+
+- **Keep the page on your LAN.** It lists attacker IPs, probed ports, and every drive's serial number.
+- Hosts that stop reporting disappear after 7 days.
+- Map locations are approximate (city level at best). Much of the noise comes from cloud providers, so expect hot spots at data-centre cities.
+- The collector logs map counters every 5 minutes and one line per SMART report: `journalctl -u rack-dashboard`.

@@ -1,0 +1,22 @@
+[Unit]
+Description=Rack Dashboard (WAN noise map + drive health)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Local flags (--home, a different --iface, host order) belong in a drop-in:
+#   sudo systemctl edit rack-dashboard
+ExecStart=/opt/rack-dashboard/.venv/bin/python /opt/rack-dashboard/collector.py --db /opt/rack-dashboard/dbip-city-lite.mmdb --iface igb0 --smart-order opnsense,optiplex-management,homeshare,backup-compute
+WorkingDirectory=/opt/rack-dashboard
+DynamicUser=yes
+StateDirectory=rack-dashboard
+LoadCredential=agent-token:/etc/rack-dashboard/agent-token
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

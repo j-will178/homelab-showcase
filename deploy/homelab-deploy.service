@@ -1,0 +1,13 @@
+[Unit]
+Description=Pull j-will178/homelab and deploy changes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/homelab/deploy/homelab-deploy.sh
+StateDirectory=homelab-deploy
+Environment=REPO_DIR=/opt/homelab
+Environment=BRANCH=main
+# Uses the read-only deploy key via the "github-homelab" host alias in /root/.ssh/config
+TimeoutStartSec=10min

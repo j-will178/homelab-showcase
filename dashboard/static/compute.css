@@ -1,0 +1,54 @@
+/* ---------- compute screen ---------- */
+#compute { height: 100%; overflow-y: auto; padding: 22px 28px 60px; display: flex; flex-direction: column; gap: 14px; }
+.chosts { display: grid; grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 14px; }
+.chost { background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--lv); border-radius: 10px; overflow: hidden; }
+.chost.lv-ok { border-top-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.chost.stale { opacity: 0.55; border-top-color: var(--warn); }
+.chost header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); min-width: 0; }
+.chost h2 { margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.chost .os { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.chost .model { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.chost .when { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.creasons { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 5px 14px 0; font-size: 11.5px; }
+
+.cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; padding: 10px 14px 12px; }
+.blk { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.blk .lab { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.blk .lab .dim { text-transform: none; letter-spacing: 0; color: var(--muted); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .big { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1.05; }
+.blk .big small { font-size: 13px; color: var(--muted); margin-left: 2px; }
+.blk .big.lv-warn, .blk .big.lv-crit { color: var(--lv); }
+.blk .facts { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .facts .lv-warn, .blk .facts .lv-crit { color: var(--lv); }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.kv .k { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.kv .k em { font-style: normal; font-size: 10px; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
+.kv .v { font-family: var(--mono); white-space: nowrap; }
+
+.spark { width: 100%; height: 46px; display: block; overflow: visible; }
+.spark polyline { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.spark .area { stroke: none; opacity: 0.12; }
+.c-cpu .s0 { stroke: var(--accent); } .c-cpu .area { fill: var(--accent); }
+.c-mem .s0 { stroke: #a78bfa; } .c-mem .area { fill: #a78bfa; }
+.c-gpu .s0 { stroke: #4ade80; } .c-gpu .area { fill: #4ade80; }
+.c-net .s0, .c-disk .s0 { stroke: #38bdf8; } .c-net .area, .c-disk .area { fill: #38bdf8; }
+.c-net .s1, .c-disk .s1 { stroke: #f59e0b; }
+.legend { display: inline-flex; gap: 4px; align-items: center; text-transform: none; letter-spacing: 0; }
+.legend i { width: 8px; height: 2px; display: inline-block; margin-left: 4px; }
+.legend .l0 { background: #38bdf8; } .legend .l1 { background: #f59e0b; }
+
+.bar { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.bar b { display: block; height: 100%; background: #a78bfa; opacity: 0.8; }
+.gpu .bar b { background: #4ade80; }
+
+/* per-core strip: hue from accent (idle) to amber/red (busy) */
+.cores { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2px; margin-top: 3px; }
+.cores i { height: 7px; border-radius: 1px;
+  background: color-mix(in srgb, color-mix(in srgb, #f87171 calc(var(--u) * 100%), var(--accent)) calc(15% + var(--u) * 85%), rgba(255,255,255,0.05)); }
+
+@media (max-width: 760px) {
+  .chosts { grid-template-columns: 1fr; }
+  .cgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rack Dashboard</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="smart.css">
+<link rel="stylesheet" href="compute.css">
+<link rel="stylesheet" href="tasks.css">
+<link rel="stylesheet" href="deploy.css">
+</head>
+<body data-screen="noise">
+<div id="screens">
+
+  <!-- ===== Screen 1: WAN noise map ===== -->
+  <section class="screen active" data-id="noise" data-title="WAN noise">
+    <div id="app">
+      <main id="stage">
+        <svg id="map" aria-label="World map"></svg>
+        <canvas id="fx"></canvas>
+        <div id="hud">
+          <span id="status" class="pill">connecting…</span>
+          <span class="hud-stat"><b id="rate">0</b> / min</span>
+          <span class="hud-stat"><b id="total">0</b> total</span>
+        </div>
+        <div id="tooltip" hidden></div>
+        <div id="credit"></div>
+      </main>
+
+      <aside id="panel">
+        <header>
+          <h1>WAN noise</h1>
+          <p class="sub">Unsolicited inbound traffic blocked by OPNsense</p>
+        </header>
+
+        <section class="controls">
+          <label>Projection
+            <select id="projection"></select>
+          </label>
+          <label>Afterglow <span id="fadeLabel"></span>
+            <input id="fade" type="range" min="10" max="300" step="5">
+          </label>
+          <label class="check"><input id="dayNight" type="checkbox"> Day / night</label>
+          <label class="check"><input id="arcs" type="checkbox"> Arcs to home</label>
+          <div id="homeRow" class="hint"></div>
+        </section>
+
+        <section>
+          <h2>Legend</h2>
+          <ul id="legend"></ul>
+        </section>
+
+        <section>
+          <h2>Top countries <span class="muted">(this session)</span></h2>
+          <ol id="topCountries" class="bars"></ol>
+        </section>
+
+        <section>
+          <h2>Top ports</h2>
+          <ol id="topPorts" class="bars"></ol>
+        </section>
+
+        <section class="grow">
+          <h2>Live feed</h2>
+          <ul id="feed"></ul>
+        </section>
+
+        <footer class="keys">
+          <kbd>P</kbd> projection · <kbd>H</kbd> panel
+        </footer>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===== Screen 2: drive health (SMART) ===== -->
+  <section class="screen" data-id="smart" data-title="Drive health">
+    <div id="smart">
+      <header class="smart-head">
+        <div>
+          <h1>Drive health</h1>
+          <p class="sub">SMART data reported by each machine's agent</p>
+        </div>
+        <div id="smartSummary" class="chips"></div>
+      </header>
+      <div id="smartHosts" class="hosts"></div>
+      <p id="smartEmpty" class="empty" hidden>No reports yet. Install an agent on a machine (see <code>dashboard/agents/README.md</code>).</p>
+    </div>
+  </section>
+
+  <!-- ===== Screen 3: compute ===== -->
+  <section class="screen" data-id="compute" data-title="Compute">
+    <div id="compute">
+      <header class="smart-head">
+        <div>
+          <h1>Compute</h1>
+          <p class="sub">CPU, memory, GPU, network and disk, sampled every 10 s · charts show the last hour</p>
+        </div>
+        <div id="computeSummary" class="chips"></div>
+      </header>
+      <div id="computeHosts" class="chosts"></div>
+      <p id="computeEmpty" class="empty" hidden>No metrics yet. Agents send them every 10 seconds once updated (see <code>dashboard/agents/README.md</code>).</p>
+    </div>
+  </section>
+
+  <!-- ===== Screen 4: scheduled tasks ===== -->
+  <section class="screen" data-id="tasks" data-title="Scheduled tasks">
+    <div id="tasks">
+      <header class="smart-head">
+        <div>
+          <h1>Scheduled tasks</h1>
+          <p class="sub">Tasks in the <code>\Homelab\</code> folder of Task Scheduler on each host · mirror jobs report their own results</p>
+        </div>
+        <div id="tasksSummary" class="chips"></div>
+      </header>
+      <div id="tasksList"></div>
+      <p id="tasksEmpty" class="empty" hidden>No scheduled tasks reported yet. Mirror jobs are defined in <code>backups/tasks.json</code> and created by Deploy all (see <code>backups/README.md</code>).</p>
+    </div>
+  </section>
+
+  <!-- ===== Screen 5: deployments ===== -->
+  <section class="screen" data-id="deploy" data-title="Deployments">
+    <div id="deploy">
+      <header class="smart-head">
+        <div>
+          <h1>Deployments</h1>
+          <p class="sub">Each host pulls <code>main</code> by itself (optiplex-management every 2 min, the others every 15 min). Deploy all makes them all do it now.</p>
+        </div>
+        <div class="dhead-right">
+          <div id="deploySummary" class="chips"></div>
+          <div class="dactions"><span id="deployNote"></span><button id="deployAllBtn" type="button">Deploy all</button></div>
+        </div>
+      </header>
+      <table class="dtable">
+        <thead><tr><th>Host</th><th>Branch</th><th>Commit</th><th>Last check</th><th>Last change</th><th>Result</th><th>Git / agent</th><th></th></tr></thead>
+        <tbody id="deployRows"></tbody>
+      </table>
+      <p id="deployEmpty" class="empty" hidden>No hosts reporting yet.</p>
+      <p class="dhint">Hosts pick a deploy request up within 10 s and finish within about a minute. From a terminal:
+        <code>curl -X POST -H 'X-Rack-Deploy: 1' http://optiplex-management.home.arpa:8080/api/deploy</code></p>
+    </div>
+  </section>
+
+</div>
+
+<!-- slideshow controls -->
+<nav id="rotator" aria-label="Screens">
+  <div id="dots"></div>
+  <span id="rotState" class="rot-state"></span>
+  <span class="rot-keys"><kbd>←</kbd><kbd>→</kbd> screens · <kbd>R</kbd> pause · <kbd>F</kbd> fullscreen</span>
+  <div id="progress"><div id="progressFill"></div></div>
+</nav>
+
+<script src="vendor/d3.min.js"></script>
+<script src="vendor/d3-geo-projection.min.js"></script>
+<script src="vendor/topojson-client.min.js"></script>
+<script src="transition.js"></script>
+<script src="screens.js"></script>
+<script src="noise.js"></script>
+<script src="smart.js"></script>
+<script src="compute.js"></script>
+<script src="tasks.js"></script>
+<script src="deploy.js"></script>
+</body>
+</html>
