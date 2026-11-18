@@ -142,8 +142,21 @@
     const p = h.procs || {};
     if (!p.top?.length) return '';
     return `<div class="blk procs">
-      <div class="lab">Top processes <span class="dim">${p.count ? `of ${p.count}` : ''}</span></div>
+      <div class="lab">Top processes · CPU <span class="dim">${p.count ? `of ${p.count}` : ''}</span></div>
       ${p.top.map(t => `<div class="kv"><span class="k">${esc(t.name)}</span><span class="v">${(n(t.cpu_pct) ?? 0).toFixed(1)}%</span></div>`).join('')}
+    </div>`;
+  }
+
+  // Memory by program (all of a program's processes together, e.g. "svchost ×71").
+  // Windows: private working set; Linux/FreeBSD: resident memory.
+  function topMemBlock(h) {
+    const rows = (h.procs || {}).top_mem || [];
+    if (!rows.length) return '';
+    const total = n(h.mem?.total);
+    return `<div class="blk procs">
+      <div class="lab">Top processes · memory</div>
+      ${rows.map(t => `<div class="kv"><span class="k">${esc(t.name)}${t.n > 1 ? ` <span class="dim">×${t.n}</span>` : ''}</span>` +
+        `<span class="v">${bytes(n(t.mem) ?? 0)}${total ? ` <span class="dim">${(100 * (n(t.mem) ?? 0) / total).toFixed(0)}%</span>` : ''}</span></div>`).join('')}
     </div>`;
   }
 
@@ -164,8 +177,8 @@
         <span class="when ${stale ? 'lv-warn' : ''}">${stale ? `STALE · ${ago(age)}` : uptime(h.uptime_s)}</span>
       </header>
       ${reasons}
-      <div class="cgrid">
-        ${cpuBlock(h)}${memBlock(h)}${gpuBlock(h)}${netBlock(h)}${diskBlock(h)}${procBlock(h)}
+      <div class="cgrid${h.gpus?.length ? ' g4' : ''}">
+        ${cpuBlock(h)}${memBlock(h)}${gpuBlock(h)}${netBlock(h)}${diskBlock(h)}${procBlock(h)}${topMemBlock(h)}
       </div>
     </article>`;
   }

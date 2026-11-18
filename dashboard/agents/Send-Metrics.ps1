@@ -28,7 +28,7 @@ param(
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$Version = 'Send-Metrics.ps1/2'   # bump with LATEST_AGENTS in metrics.py
+$Version = 'Send-Metrics.ps1/3'   # bump with LATEST_AGENTS in metrics.py
 $LogPath = Join-Path $Dir 'agent.log'
 
 function Write-Log([string]$Message) {
@@ -70,7 +70,7 @@ function New-MetricsBody([string]$name, [int]$Window) {
         '\Network Interface(*)\Bytes Received/sec', '\Network Interface(*)\Bytes Sent/sec', '\Network Interface(*)\Current Bandwidth',
         '\PhysicalDisk(*)\Disk Read Bytes/sec', '\PhysicalDisk(*)\Disk Write Bytes/sec', '\PhysicalDisk(*)\% Idle Time',
         '\Memory\% Committed Bytes In Use',
-        '\Process(*)\% Processor Time'
+        '\Process(*)\% Processor Time', '\Process(*)\Working Set - Private'
     )
     $set = Get-Counter -Counter $paths -SampleInterval ([math]::Max(1, $Window)) -MaxSamples 2 -ErrorAction SilentlyContinue
     $samples = @($set)[-1].CounterSamples
@@ -112,15 +112,22 @@ function New-MetricsBody([string]$name, [int]$Window) {
         }
     }
 
-    $top = @()
+    $top = @(); $topMem = @()
     $procCount = 0
     if ($c['process']) {
         $rows = foreach ($k in $c['process'].Keys) {
             if ($k -in '_total', 'idle') { continue }
             $procCount++
-            [pscustomobject]@{ name = ($k -replace '#\d+$', ''); cpu_pct = [math]::Round($c['process'][$k]['% processor time'] / [math]::Max(1, $threads), 1) }
+            [pscustomobject]@{ name = ($k -replace '#\d+$', '')
+                               cpu_pct = [math]::Round($c['process'][$k]['% processor time'] / [math]::Max(1, $threads), 1)
+                               mem = [double]$c['process'][$k]['working set - private'] }
         }
         $top = @($rows | Sort-Object cpu_pct -Descending | Select-Object -First 3 | ForEach-Object { [ordered]@{ name = $_.name; cpu_pct = $_.cpu_pct } })
+        # Memory by program name (e.g. all svchost instances together): private working set, i.e. RAM the process alone holds
+        $topMem = @($rows | Where-Object { $_.mem -gt 0 } | Group-Object name | ForEach-Object {
+                [pscustomobject]@{ name = $_.Name; mem = ($_.Group | Measure-Object mem -Sum).Sum; n = $_.Count } } |
+            Sort-Object mem -Descending | Select-Object -First 3 |
+            ForEach-Object { [ordered]@{ name = $_.name; mem = [math]::Round($_.mem); n = $_.n } })
     }
 
     $pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
@@ -144,7 +151,7 @@ function New-MetricsBody([string]$name, [int]$Window) {
         }
         gpus = @(Get-NvidiaGpus)
         net = $net; disks = $disks
-        procs = [ordered]@{ count = $procCount; top = $top }
+        procs = [ordered]@{ count = $procCount; top = $top; top_mem = $topMem }
     }
     $tasks = Get-HomelabTasks
     if ($null -ne $tasks) { $sample.tasks = @($tasks) }

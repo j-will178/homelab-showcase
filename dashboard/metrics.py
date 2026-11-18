@@ -34,7 +34,7 @@ HISTORY = 360                    # points kept per series (1 h at one sample eve
 OK, WARN, CRIT = "ok", "warn", "crit"
 _RANK = {OK: 0, WARN: 1, CRIT: 2}
 
-LATEST_AGENTS = {"metrics_agent.py": 2, "Send-Metrics.ps1": 2}
+LATEST_AGENTS = {"metrics_agent.py": 3, "Send-Metrics.ps1": 3}
 
 
 def _num(v):
@@ -454,7 +454,7 @@ def demo_samples(t, minute):
     jelly = 18 + 30 * wave(23)
     xeon_cores = [max(0.0, min(100.0, (jelly if i < 8 else 3) + rnd.uniform(-6, 6))) for i in range(40)]
     return [
-        {"host": "opnsense", "os": "freebsd", "agent": "metrics_agent.py/2", "deploy_status": _demo_deploy("c97b5d4e81f0", "Dashboard: SMART temperature limits from the drive", 900, 2300, 410, "2.46.2"), "uptime_s": int(9 * 86400 + minute * 60),
+        {"host": "opnsense", "os": "freebsd", "agent": "metrics_agent.py/3", "deploy_status": _demo_deploy("c97b5d4e81f0", "Dashboard: SMART temperature limits from the drive", 900, 2300, 410, "2.46.2"), "uptime_s": int(9 * 86400 + minute * 60),
          "cpu": {"model": "Intel Core i7-7700 @ 3.60GHz", "sockets": 1, "cores": 4, "threads": 8,
                  "util_pct": 4 + 3 * wave(11), "per_core_pct": [rnd.uniform(1, 9) for _ in range(8)],
                  "load": [0.31, 0.27, 0.22], "temp_c": 41 + 4 * wave(17)},
@@ -463,8 +463,10 @@ def demo_samples(t, minute):
                 + nics(0.1 * Gb * 0.03, 0.8 * Gb * wave(9) * 0.05, 1000, "igb1 (LAN)"),
          "disks": [{"name": "ada0", "read_bps": 2e3, "write_bps": 4e4 + 2e4 * wave(5), "busy_pct": 0.4}],
          "procs": {"count": 61, "top": [{"name": "suricata", "cpu_pct": 2.1}, {"name": "unbound", "cpu_pct": 0.6},
-                                         {"name": "python3.11", "cpu_pct": 0.3}]}},
-        {"host": "optiplex-management", "os": "linux", "agent": "metrics_agent.py/2", "deploy_status": _demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 120, 40, 1500, "2.43.0"), "uptime_s": int(2 * 3600 + minute * 60),
+                                         {"name": "python3.11", "cpu_pct": 0.3}],
+                   "top_mem": [{"name": "suricata", "mem": 1.1 * GB, "n": 1}, {"name": "python3.11", "mem": 0.21 * GB, "n": 3},
+                               {"name": "unbound", "mem": 0.09 * GB, "n": 1}]}},
+        {"host": "optiplex-management", "os": "linux", "agent": "metrics_agent.py/3", "deploy_status": _demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 120, 40, 1500, "2.43.0"), "uptime_s": int(2 * 3600 + minute * 60),
          "cpu": {"model": "Intel Core i5-8500T @ 2.10GHz", "sockets": 1, "cores": 6, "threads": 6,
                  "util_pct": 9 + 6 * wave(7), "per_core_pct": [rnd.uniform(3, 20) for _ in range(6)],
                  "load": [0.42, 0.38, 0.35], "temp_c": 52 + 6 * wave(13)},
@@ -473,8 +475,10 @@ def demo_samples(t, minute):
          "disks": [{"name": "sda", "read_bps": 1e3, "write_bps": 6e4, "busy_pct": 0.8},
                    {"name": "sdb", "read_bps": 0, "write_bps": 2e3, "busy_pct": 0.1}],
          "procs": {"count": 147, "top": [{"name": "chromium", "cpu_pct": 6.2}, {"name": "python3", "cpu_pct": 1.4},
-                                          {"name": "Xorg", "cpu_pct": 0.9}]}},
-        {"host": "homeshare", "os": "windows", "agent": "Send-Metrics.ps1/2", "tasks": _demo_tasks(), "deploy_status": dict(_demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 900, 380, 1100, "2.47.1.windows.1"),
+                                          {"name": "Xorg", "cpu_pct": 0.9}],
+                   "top_mem": [{"name": "chromium", "mem": 1.3 * GB, "n": 14}, {"name": "python3", "mem": 0.41 * GB, "n": 4},
+                               {"name": "Xorg", "mem": 0.12 * GB, "n": 1}]}},
+        {"host": "homeshare", "os": "windows", "agent": "Send-Metrics.ps1/3", "tasks": _demo_tasks(), "deploy_status": dict(_demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 900, 380, 1100, "2.47.1.windows.1"),
                                                                                         running_for_s=95, phase="applying scheduled tasks"), "uptime_s": 21 * 86400, "pending_reboot": True,
          "cpu": {"model": "Intel Core i3-4160 @ 3.60GHz", "sockets": 1, "cores": 2, "threads": 4,
                  "util_pct": 11 + 25 * wave(19), "per_core_pct": [rnd.uniform(5, 40) for _ in range(4)]},
@@ -483,8 +487,10 @@ def demo_samples(t, minute):
          "disks": [{"name": "Main", "read_bps": 1.4 * Gb * wave(19), "write_bps": 1e6, "busy_pct": 30 * wave(19)},
                    {"name": "Archive", "read_bps": 0, "write_bps": 0, "busy_pct": 0}],
          "procs": {"count": 132, "top": [{"name": "robocopy", "cpu_pct": 14 * wave(19)},
-                                          {"name": "System", "cpu_pct": 3.1}, {"name": "svchost", "cpu_pct": 0.8}]}},
-        {"host": "backup-compute", "os": "windows", "agent": "Send-Metrics.ps1/2", "deploy_status": _demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 900, 610, 1300, "2.47.1.windows.1"), "uptime_s": 6 * 86400,
+                                          {"name": "System", "cpu_pct": 3.1}, {"name": "svchost", "cpu_pct": 0.8}],
+                   "top_mem": [{"name": "svchost", "mem": 1.4 * GB, "n": 71}, {"name": "MsMpEng", "mem": 0.31 * GB, "n": 1},
+                               {"name": "powershell", "mem": 0.18 * GB, "n": 3}]}},
+        {"host": "backup-compute", "os": "windows", "agent": "Send-Metrics.ps1/3", "deploy_status": _demo_deploy("1fdb945c3a2e", "Merge pull request #20: Compute screen", 900, 610, 1300, "2.47.1.windows.1"), "uptime_s": 6 * 86400,
          "cpu": {"model": "Intel Xeon E5-2660 v2 @ 2.20GHz", "sockets": 2, "cores": 20, "threads": 40,
                  "util_pct": sum(xeon_cores) / 40, "per_core_pct": xeon_cores},
          "mem": {"total": 64 * GB, "used": 21 * GB, "commit_pct": 38},
@@ -494,7 +500,9 @@ def demo_samples(t, minute):
          "net": nics(0.2 * Gb * wave(19), 1.4 * Gb * wave(19), 10000, "Intel X520 (10G)"),
          "disks": [{"name": "Backup", "read_bps": 3e6, "write_bps": 1.4 * Gb * wave(19), "busy_pct": 25 * wave(19)}],
          "procs": {"count": 168, "top": [{"name": "jellyfin.ffmpeg", "cpu_pct": round(jelly * 8 / 40, 1)},
-                                          {"name": "FAHClient", "cpu_pct": 4.0}, {"name": "jellyfin", "cpu_pct": 1.2}]}},
+                                          {"name": "FAHClient", "cpu_pct": 4.0}, {"name": "jellyfin", "cpu_pct": 1.2}],
+                   "top_mem": [{"name": "jellyfin", "mem": 3.2 * GB, "n": 1}, {"name": "svchost", "mem": 1.2 * GB, "n": 64},
+                               {"name": "jellyfin.ffmpeg", "mem": 1.1 * GB, "n": 2}]}},
     ]
 
 

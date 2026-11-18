@@ -41,7 +41,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-VERSION = "metrics_agent.py/2"   # bump with LATEST_AGENTS in metrics.py
+VERSION = "metrics_agent.py/3"   # bump with LATEST_AGENTS in metrics.py
 SYSTEM = platform.system().lower()   # 'linux' | 'freebsd'
 
 
@@ -236,14 +236,31 @@ def parse_ifconfig_speeds(text):
     return speeds
 
 
+# FreeBSD kernel pseudo-processes that aren't work: "idle" is charged with all unused CPU time.
+NOT_WORK = {"idle"}
+
+
+def top_memory(rows, n=3):
+    """Memory by program name (summed over its processes, e.g. 12 browser tabs = one row)."""
+    by = {}
+    for r in rows:
+        if r.get("mem"):
+            name = r["name"]
+            m, c = by.get(name, (0, 0))
+            by[name] = (m + r["mem"], c + 1)
+    return [{"name": k, "mem": m, "n": c} for k, (m, c) in sorted(by.items(), key=lambda kv: -kv[1][0])[:n]]
+
+
 def parse_ps(text, threads):
     rows = []
     for line in text.splitlines()[1:]:
         f = line.split(None, 2)
         if len(f) == 3:
+            name = os.path.basename(f[2].strip())
+            if name in NOT_WORK:
+                continue
             try:
-                rows.append({"name": os.path.basename(f[2].strip()), "cpu_pct": round(float(f[0]) / threads, 1),
-                             "mem": int(f[1]) * 1024})
+                rows.append({"name": name, "cpu_pct": round(float(f[0]) / threads, 1), "mem": int(f[1]) * 1024})
             except ValueError:
                 pass
     return rows
@@ -324,13 +341,14 @@ def collect(interval=1.0):
         hz = os.sysconf("SC_CLK_TCK")
         top = sorted(({"name": c, "cpu_pct": round(100.0 * (t - procs0[p][1]) / hz / dt / st["threads"], 1), "mem": m}
                       for p, (c, t, m) in procs1.items() if p in procs0), key=lambda r: -r["cpu_pct"])
-        procs = {"count": len(procs1), "top": top[:3]}
+        procs = {"count": len(procs1), "top": top[:3],
+                 "top_mem": top_memory({"name": c, "mem": m} for c, _, m in procs1.values())}
     else:
         rows = parse_iostat_x(iostat.communicate(timeout=10)[0]) if iostat else {}
         disks = [{"name": d, "read_bps": r * 1024, "write_bps": w * 1024, "busy_pct": b}
                  for d, (r, w, b) in sorted(rows.items()) if not d.startswith(("pass", "cd"))]
         rows = parse_ps(run(["ps", "-axo", "pcpu,rss,comm", "-r"]), st["threads"])
-        procs = {"count": len(rows), "top": rows[:3]}
+        procs = {"count": len(rows), "top": rows[:3], "top_mem": top_memory(rows)}
 
     return {
         "schema": 1, "agent": VERSION, "os": SYSTEM,

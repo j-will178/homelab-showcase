@@ -13,6 +13,7 @@
 .creasons { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 5px 14px 0; font-size: 11.5px; }
 
 .cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; padding: 10px 14px 12px; }
+.cgrid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* GPU hosts: 7 blocks in two rows */
 .blk { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .blk .lab { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 .blk .lab .dim { text-transform: none; letter-spacing: 0; color: var(--muted); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

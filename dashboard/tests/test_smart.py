@@ -305,6 +305,17 @@ lo0: flags=1008049<UP,LOOPBACK,RUNNING,MULTICAST,LOWER_UP> metric 0 mtu 16384
         rows = metrics_agent.parse_ps(self.PS, threads=8)
         self.assertEqual(rows[0], {"name": "suricata", "cpu_pct": 2.0, "mem": 91234 * 1024})
 
+    def test_ps_drops_freebsd_idle(self):
+        # FreeBSD charges all unused CPU to the kernel's "idle" process; it isn't work
+        text = "%CPU    RSS COMMAND\n793.0      0 idle\n  0.4  91234 suricata\n"
+        self.assertEqual([r["name"] for r in metrics_agent.parse_ps(text, threads=8)], ["suricata"])
+
+    def test_top_memory_groups_by_program(self):
+        rows = [{"name": "chrome", "mem": 100}, {"name": "chrome", "mem": 300}, {"name": "sshd", "mem": 50},
+                {"name": "init", "mem": 0}, {"name": "big", "mem": 350}]
+        self.assertEqual(metrics_agent.top_memory(rows), [
+            {"name": "chrome", "mem": 400, "n": 2}, {"name": "big", "mem": 350, "n": 1}, {"name": "sshd", "mem": 50, "n": 1}])
+
     def test_cpu_util(self):
         self.assertEqual(metrics_agent.cpu_util((100, 1000), (150, 1100)), 50.0)
 
