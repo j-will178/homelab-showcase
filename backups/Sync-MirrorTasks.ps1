@@ -95,7 +95,7 @@ function New-TaskXml([string]$Job, $Def, [string]$Fingerprint) {
     $hours = if ($Def.time_limit_hours) { [int]$Def.time_limit_hours } else { 24 }
     if ($hours -lt 1 -or $hours -gt 720) { throw 'time_limit_hours must be 1-720' }
     $enabled = if ($Def.enabled -eq $false) { 'false' } else { 'true' }
-    $runner = Join-Path $Dir 'Invoke-Mirror.ps1'
+    $runner = Join-Path $Dir $(if ($Def.type -eq 'kopia') { 'Invoke-CloudBackup.ps1' } else { 'Invoke-Mirror.ps1' })
     $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`" -Job $Job"
     $desc = "$($Def.description) [$Marker host:$($HostName.ToLower()) def:$Fingerprint; from backups/tasks.json, changes here are overwritten]".Trim()
     return @"
@@ -263,15 +263,55 @@ if ($pstate.Count -and -not $WhatIf) {
     Set-Content -Path $ProviderStatePath -Value (ConvertTo-Json -InputObject $pstate -Depth 4) -Encoding UTF8
 }
 
+# ---- Kopia (cloud backup jobs): the pinned, hash-verified version from kopia.json ----
+function Install-Kopia {
+    # Installs to $Dir\kopia\bin\<version>\kopia.exe. Refuses anything whose SHA-256 doesn't match
+    # the hash pinned in git; installs nothing until a hash is pinned. Returns a note or $null.
+    $pin = Get-Content -Raw (Join-Path $Dir 'kopia.json') | ConvertFrom-Json
+    if ("$($pin.version)" -notmatch '^\d+\.\d+\.\d+$') { throw "kopia.json: bad version '$($pin.version)'" }
+    $exe = Join-Path (Join-Path (Join-Path $Dir 'kopia\bin') $pin.version) 'kopia.exe'
+    if (Test-Path $exe) { return $null }
+    if ("$($pin.sha256)" -notmatch '^[0-9a-fA-F]{64}$') { throw "kopia.json has no SHA-256 pinned for $($pin.version): not installing an unverified download" }
+    $tmp = Join-Path $env:TEMP "kopia-$($pin.version)-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        $zip = Join-Path $tmp 'kopia.zip'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $pin.url -OutFile $zip -UseBasicParsing -TimeoutSec 300
+        $hash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+        if ($hash -ne $pin.sha256.ToUpper()) { throw "Kopia download hash $hash does not match the pinned $($pin.sha256.ToUpper()): not installed" }
+        Expand-Archive -Path $zip -DestinationPath (Join-Path $tmp 'x') -Force
+        $found = Get-ChildItem -Path (Join-Path $tmp 'x') -Recurse -Filter 'kopia.exe' | Select-Object -First 1
+        if (-not $found) { throw 'kopia.exe not found in the release zip' }
+        New-Item -ItemType Directory -Force -Path (Split-Path $exe) | Out-Null
+        Copy-Item -Force $found.FullName $exe
+    } finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+    # older versions aren't needed once the pinned one is in place
+    Get-ChildItem (Join-Path $Dir 'kopia\bin') -Directory | Where-Object { $_.Name -ne $pin.version } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    return "kopia $($pin.version) installed (SHA-256 verified)"
+}
+
+$needsKopia = @($defs.PSObject.Properties | Where-Object { $_.Value.type -eq 'kopia' -and "$($_.Value.host)".ToLower() -eq $HostName.ToLower() }).Count
+if ($needsKopia -and -not $WhatIf) {
+    try {
+        Protect-Folder $Dir      # the Kopia cache and per-run connection file live under here
+        $note = Install-Kopia; if ($note) { $result.updated += $note }
+    }
+    catch { $result.errors += "kopia: $($_.Exception.Message)" }
+}
+
 $wanted = @{}
 foreach ($p in $defs.PSObject.Properties) {
     $job, $def = $p.Name, $p.Value
     if ("$($def.host)".ToLower() -ne $HostName.ToLower()) { continue }
-    $name = "Mirror $job"
+    $name = if ($def.type -eq 'kopia') { "Cloud backup $job" } else { "Mirror $job" }
     $wanted[$name] = $true
     try {
         if ($job -notmatch '^[A-Za-z0-9._-]{1,64}$') { throw "bad job name '$job'" }
-        if (-not $def.source -or -not $def.destination) { throw 'needs "source" and "destination"' }
+        if ($def.type -eq 'kopia') {
+            if (-not $def.source -or -not $def.kopia.bucket -or -not $def.kopia.endpoint) { throw 'kopia jobs need "source", "kopia.bucket" and "kopia.endpoint"' }
+        } elseif (-not $def.source -or -not $def.destination) { throw 'needs "source" and "destination"' }
         $fp = Get-Hash ((New-TaskXml $job $def '') + $Version)
         $xml = New-TaskXml $job $def $fp
         $existing = Get-ScheduledTask -TaskPath $TaskPath -TaskName $name -ErrorAction SilentlyContinue

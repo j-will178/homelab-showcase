@@ -229,7 +229,7 @@ function Get-HomelabTasks {
     foreach ($t in @(Get-ScheduledTask -TaskPath '\Homelab\' -ErrorAction SilentlyContinue)) {
         $info = $t | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue
         $job = $null
-        foreach ($a in $t.Actions) { if ("$($a.Arguments)" -match 'Invoke-Mirror\.ps1"?\s+-Job\s+"?([A-Za-z0-9._-]+)') { $job = $Matches[1] } }
+        foreach ($a in $t.Actions) { if ("$($a.Arguments)" -match '(?:Invoke-Mirror|Invoke-CloudBackup)\.ps1"?\s+-Job\s+"?([A-Za-z0-9._-]+)') { $job = $Matches[1] } }
         $next = if ($info -and $info.NextRunTime -and $info.NextRunTime.Year -gt 2000) { [int](($info.NextRunTime - $now).TotalSeconds) } else { $null }
         $entry = [ordered]@{
             name = $t.TaskName; state = "$($t.State)"; job = $job; description = $t.Description
@@ -243,7 +243,7 @@ function Get-HomelabTasks {
         if ($job -and (Test-Path (Join-Path $resultsDir "$job.json"))) {
             try {
                 $r = Get-Content -Raw (Join-Path $resultsDir "$job.json") | ConvertFrom-Json
-                $entry.source = $r.source; $entry.destination = $r.destination
+                $entry.source = $r.source; $entry.destination = $r.destination; $entry.kind = $(if ($r.kind) { "$($r.kind)" } else { 'mirror' })
                 if ($r.current) { $entry.running_for_s = [int]($epoch - [int64]$r.current.start) }
                 $entry.runs = @($r.runs | ForEach-Object {
                     [ordered]@{ age_s = [int]($epoch - [int64]$_.end); duration_s = [int]([int64]$_.end - [int64]$_.start); status = $_.status

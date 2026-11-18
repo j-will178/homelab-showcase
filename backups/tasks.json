@@ -34,6 +34,27 @@
       },
       "time_limit_hours": 12,
       "enabled": true
+    },
+    "homeshare-to-b2": {
+      "host": "homeshare",
+      "type": "kopia",
+      "description": "Daily encrypted Kopia snapshot to Backblaze B2 (TEST: School folder only; widen to D:\\HomeShare after a test restore)",
+      "source": "D:\\HomeShare\\School",
+      "kopia": {
+        "endpoint": "s3.us-east-005.backblazeb2.com",
+        "bucket": "your-bucket-name",
+        "retention": {
+          "keep_daily": 30
+        },
+        "object_lock_days": 30
+      },
+      "schedule": {
+        "daily": {
+          "at": "04:00"
+        }
+      },
+      "time_limit_hours": 23,
+      "enabled": true
     }
   }
 }

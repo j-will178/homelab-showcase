@@ -36,22 +36,31 @@
   const num = v => (n(v) == null ? '—' : v.toLocaleString('en-US'));
 
   // One bar per run (oldest left): height = data copied (log scale), colour = result.
-  function history(runs) {
+  // Kopia (cloud) runs report changed files rather than bytes copied, so their bars use that.
+  function history(runs, kind) {
     if (!runs?.length) return '<div class="thist empty">no runs recorded yet</div>';
-    const max = Math.max(1, ...runs.map(r => n(r.summary?.bytes?.copied) ?? 0));
+    const kopia = kind === 'kopia';
+    const metric = r => n(kopia ? r.summary?.files?.copied : r.summary?.bytes?.copied) ?? 0;
+    const max = Math.max(1, ...runs.map(metric));
     const bars = runs.map(r => {
-      const b = n(r.summary?.bytes?.copied) ?? 0;
+      const b = metric(r);
       const h = b > 0 ? 12 + 88 * Math.sqrt(b / max) : 8;
-      const tip = `${ago(r.age_s + since())} · ${r.status}: ${r.message} · ${bytes(b)} copied · took ${dur(r.duration_s)}`;
+      const tip = `${ago(r.age_s + since())} · ${r.status}: ${r.message} · ${kopia ? num(b) + ' files changed' : bytes(b) + ' copied'} · took ${dur(r.duration_s)}`;
       return `<i class="lv-${LEVEL[r.status] || 'crit'}" style="height:${h.toFixed(0)}%" title="${esc(tip)}"></i>`;
     }).join('');
-    return `<div class="thist">${bars}</div><div class="thist-axis"><span>${ago(runs[0].age_s + since())}</span><span>${runs.length} runs · height = data copied</span><span>latest</span></div>`;
+    return `<div class="thist">${bars}</div><div class="thist-axis"><span>${ago(runs[0].age_s + since())}</span><span>${runs.length} runs · height = ${kopia ? 'files changed' : 'data copied'}</span><span>latest</span></div>`;
   }
 
-  function stats(r) {
+  function stats(r, kind) {
     const f = r?.summary?.files, b = r?.summary?.bytes;
     if (!f) return '';
     const cell = (label, value, sub, cls = '') => `<div class="tstat ${cls}"><span class="k">${label}</span><span class="v">${value}</span><span class="s">${sub}</span></div>`;
+    if (kind === 'kopia') return `<div class="tstats">
+      ${cell('Changed', num(f.copied) + ' files', 'uploaded, encrypted')}
+      ${cell('Unchanged', num(f.skipped) + ' files', 'already in the cloud')}
+      ${cell('Unreadable', num(f.failed), f.failed ? 'skipped this run' : 'none', f.failed ? 'bad' : '')}
+      ${cell('Snapshot size', num(f.total) + ' files', bytes(b?.total))}
+    </div>`;
     return `<div class="tstats">
       ${cell('Copied', num(f.copied) + ' files', bytes(b?.copied))}
       ${cell('Removed (extras)', num(f.extras) + ' files', bytes(b?.extras))}
@@ -81,9 +90,9 @@
       </header>
       ${t.source ? `<div class="tpath"><code>${esc(t.source)}</code><span class="arrow">→</span><code>${esc(t.destination)}</code></div>` : t.description ? `<div class="tpath dim">${esc(t.description)}</div>` : ''}
       <div class="tlast">${lastLine}</div>
-      ${running == null ? stats(last) : ''}
+      ${running == null ? stats(last, t.kind) : ''}
       ${errors}
-      ${t.job ? history(t.runs) : ''}
+      ${t.job ? history(t.runs, t.kind) : ''}
     </article>`;
   }
 

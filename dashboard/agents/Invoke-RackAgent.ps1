@@ -38,7 +38,8 @@ $Managed = @('Send-SmartReport.ps1', 'Send-Metrics.ps1', 'Invoke-RackAgent.ps1')
 # task (or that had one). After installing, Sync-MirrorTasks.ps1 makes the \Homelab\ tasks match
 # tasks.json, so a merged PR + Deploy all creates, changes or removes them: no local setup.
 $BackupsDir = Join-Path $env:ProgramData 'HomelabBackups'
-$BackupsManaged = @('Invoke-Mirror.ps1', 'Sync-MirrorTasks.ps1', 'MirrorCredential.ps1', 'tasks.json')
+$BackupsManaged = @('Invoke-Mirror.ps1', 'Sync-MirrorTasks.ps1', 'MirrorCredential.ps1', 'tasks.json',
+                    'Invoke-CloudBackup.ps1', 'Set-CloudBackupSecrets.ps1', 'kopia.json')
 $TaskName = 'Rack Dashboard SMART agent'
 $Stamp = Join-Path $Dir 'last-full-run.txt'
 $FullEveryMinutes = 15

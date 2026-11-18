@@ -4,7 +4,7 @@ This is the source of truth for how the lab is laid out. **Update it in the same
 
 Diagrams are Mermaid, so GitHub renders them inline and changes show up as readable diffs.
 
-_Last updated: 2026-11-16_
+_Last updated: 2026-11-17_
 
 ## Hosts
 
@@ -95,22 +95,22 @@ flowchart LR
     M1P[("homeshare<br/>pool Main · 4 TB<br/>4× SSD, simple")]
     M2P[("backup-compute<br/>pool Backup · 4 TB<br/>5× SSD, simple")]
     ARC[("homeshare<br/>pool Archive · ~7.25 TB<br/>6× 2 TB SAS, parity")]
-    CLOUD[("Cloud<br/>offsite copy")]
+    CLOUD[("Backblaze B2<br/>offsite, encrypted<br/>Object Lock 30 d")]
 
     M1P ==>|"daily robocopy mirror<br/>(job homeshare-to-backup)"| M2P
     M1P -- "monthly robocopy mirror<br/>(job homeshare-to-archive)<br/>(deletions propagate, intentional)" --> ARC
-    M1P -- "daily upload ~4 TB" --> CLOUD
+    M1P -- "daily Kopia snapshot<br/>(job homeshare-to-b2)<br/>30 daily kept" --> CLOUD
 ```
 
 | Job | Runs on | Source → destination | Schedule | Reported on |
 |---|---|---|---|---|
 | `homeshare-to-backup` | homeshare, task `\Homelab\Mirror homeshare-to-backup` (SYSTEM; writes as `svc-backup` on backup-compute, credential exchanged automatically via the dashboard) | Main pool → `\\backup-compute.home.arpa\HomeShareBackup` (Backup pool), SMB over 10G | daily | dashboard *Scheduled tasks* |
 | `homeshare-to-archive` | homeshare, task `\Homelab\Mirror homeshare-to-archive` (SYSTEM, defined in `backups/tasks.json`) | Main pool → Archive pool (`A:`) | monthly | dashboard *Scheduled tasks* |
+| `homeshare-to-b2` | homeshare, task `\Homelab\Cloud backup homeshare-to-b2` (SYSTEM; Kopia, encrypted on homeshare before upload) | Main pool (**currently only `D:\HomeShare\School`, as a test**) → Backblaze B2 bucket over its S3 API (HTTPS 443 out through opnsense); 30 daily snapshots, each locked against deletion for 30 days (Object Lock, compliance mode) | daily | dashboard *Scheduled tasks* |
 
-Managed jobs are defined entirely in `backups/tasks.json` (paths, schedule) and created/updated by the homeshare updater on every update / Deploy all; they run `backups/Invoke-Mirror.ps1`, which only mirrors into a destination marked as that job's (logs and the last 30 results in `%ProgramData%\HomelabBackups`). One-way: homeshare is always the source.
+Managed jobs are defined entirely in `backups/tasks.json` (paths, schedule) and created/updated by the homeshare updater on every update / Deploy all; mirror jobs run `backups/Invoke-Mirror.ps1`, which only mirrors into a destination marked as that job's (logs and the last 30 results in `%ProgramData%\HomelabBackups`). One-way: homeshare is always the source.
 
-Planned:
-- Move the cloud backup to **Kopia** (client-side encrypted, deduplicated).
+The cloud job runs `backups/Invoke-CloudBackup.ps1` with a Kopia version pinned (and SHA-256 checked) in `backups/kopia.json`. Its B2 key and repository password are stored only on homeshare, encrypted to its machine key (one-time `Set-CloudBackupSecrets.ps1`); the repository password is also kept in the password manager, since without it the cloud copy can't be decrypted.
 
 ## Rack (bottom → top)
 
@@ -133,7 +133,7 @@ Planned:
 
 ## Open items
 
-- [ ] Kopia cloud backup
+- [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
 - [ ] UPS graceful shutdown
 - [ ] Managed switch + VLANs
 - [ ] GPU for Jellyfin transcoding / local AI (homeshare or a separate box)

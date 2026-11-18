@@ -136,6 +136,7 @@ def clean_tasks(tasks, now):
             "name": txt("name", 100), "state": t.get("state") if t.get("state") in TASK_STATES else "Unknown",
             "job": txt("job", 64), "description": txt("description", 300),
             "source": txt("source", 260), "destination": txt("destination", 260),
+            "kind": t.get("kind") if t.get("kind") in ("mirror", "kopia") else "mirror",
             "last_run_at": at("last_run_age_s"), "next_run_at": at("next_run_in_s", +1),
             "running_since": at("running_for_s"), "last_task_result": _int(t.get("last_task_result")),
             "missed_runs": _int(t.get("missed_runs")), "runs": runs,
@@ -387,7 +388,7 @@ def _demo_deploy(commit, subject, every, checked_ago, changed_ago, git):
 
 
 def _demo_tasks():
-    """Two mirror jobs on homeshare, like the real ones: daily to backup-compute, monthly to the archive."""
+    """The jobs on homeshare, like the real ones: daily mirror to backup-compute, monthly to the archive, daily cloud backup."""
     import random
     rnd = random.Random(42)
     GB = 1024 ** 3
@@ -415,8 +416,19 @@ def _demo_tasks():
             daily.append(run(age, rnd.randint(240, 1500), n, rnd.randint(1, 60) * GB // 10, rnd.randint(0, 40)))
     monthly = [run(m * 30 * 86400 + 15 * 86400, rnd.randint(5400, 9000), rnd.randint(2000, 9000),
                    rnd.randint(40, 300) * GB, rnd.randint(100, 900)) for m in range(7, -1, -1)]
+    cloud = []
+    for d in range(29, -1, -1):
+        changed = rnd.randint(15, 700)
+        cloud.append({"age_s": d * 86400 + 3 * 3600, "duration_s": rnd.randint(300, 2400), "status": "ok", "exit_code": 0,
+                      "message": f"{changed} changed or new file(s) uploaded", "error_count": 0, "errors": [],
+                      "summary": {"files": {"total": 312455, "copied": changed, "skipped": 312455 - changed, "mismatch": 0, "failed": 0, "extras": 0},
+                                  "bytes": {"total": int(3.41 * 1024 * GB), "copied": None, "skipped": None, "mismatch": 0, "failed": None, "extras": 0}}})
     base = {"state": "Ready", "last_task_result": 0, "missed_runs": 0}
     return [
+        dict(base, name="Cloud backup homeshare-to-b2", job="homeshare-to-b2", kind="kopia",
+             description="Daily encrypted Kopia snapshot to Backblaze B2 (30 daily, Object Lock)",
+             schedule="daily at 04:00", interval_s=86400, source="D:\\HomeShare", destination="b2://homelab-backup-example",
+             last_run_age_s=cloud[-1]["age_s"] + cloud[-1]["duration_s"], next_run_in_s=86400 - cloud[-1]["age_s"] - cloud[-1]["duration_s"], runs=cloud),
         dict(base, name="Mirror homeshare-to-backup", job="homeshare-to-backup", description="Daily mirror of the Main pool",
              schedule="daily at 02:00", interval_s=86400,
              source="D:\\HomeShare", destination="\\\\backup-compute.home.arpa\\HomeShareBackup",

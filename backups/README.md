@@ -1,13 +1,14 @@
-# backups: robocopy mirror jobs
+# backups: mirror and cloud backup jobs
 
-The mirror jobs on `homeshare`, run by Task Scheduler and reported on the rack dashboard's **Scheduled tasks** screen. **Everything comes from this folder:** scripts, schedules and paths. Merge a PR, press **Deploy all**, and homeshare creates, changes or removes its tasks. Nothing is set up by hand.
+The backup jobs on `homeshare`, run by Task Scheduler and reported on the rack dashboard's **Scheduled tasks** screen. **Everything comes from this folder:** scripts, schedules and paths. Merge a PR, press **Deploy all**, and homeshare creates, changes or removes its tasks. Nothing is set up by hand.
 
 | Job | What | When | Status |
 |---|---|---|---|
 | `homeshare-to-archive` | **Main** pool → **Archive** pool (SAS, same machine) | monthly | managed here (runs as SYSTEM) |
 | `homeshare-to-backup` | **Main** pool → `\\backup-compute.home.arpa\HomeShareBackup` (**Backup** pool on backup-compute) | daily | managed here (runs as SYSTEM; share credential handled automatically, see below) |
+| `homeshare-to-b2` | **Main** pool → Backblaze B2, **encrypted Kopia snapshots** (30 daily, Object Lock) | daily | managed here; needs the one-time secrets step (see [Cloud backup](#cloud-backup-kopia--backblaze-b2)) |
 
-Both are **mirrors** (`/MIR`): files deleted on homeshare are deleted from the copy at the next run. That's intentional (the copies shouldn't grow without limit). Versioned history is the cloud backup's job (see `docs/topology.md`).
+The first two are **mirrors** (`/MIR`): files deleted on homeshare are deleted from the copy at the next run. That's intentional (the copies shouldn't grow without limit). Versioned history is the cloud backup's job.
 
 ## Files
 
@@ -16,7 +17,10 @@ Both are **mirrors** (`/MIR`): files deleted on homeshare are deleted from the c
 | `tasks.json` | **The jobs**: host, source, destination, schedule, time limit, enabled. Change by PR. |
 | `Invoke-Mirror.ps1` | Runs one job, records the result |
 | `Sync-MirrorTasks.ps1` | Makes the tasks in `\Homelab\` match `tasks.json`, and exchanges share credentials (run by the updater on every update, on both ends) |
-| `MirrorCredential.ps1` | Key, encryption and dashboard helpers for the share credential |
+| `MirrorCredential.ps1` | Key, encryption and dashboard helpers for the share credential (and the cloud secrets) |
+| `Invoke-CloudBackup.ps1` | Runs one Kopia job (`"type": "kopia"`), records the result in the same format |
+| `Set-CloudBackupSecrets.ps1` | **One-time**, on homeshare: stores the B2 key and repository password, encrypted |
+| `kopia.json` | Kopia version, download URL and **SHA-256**; the updater installs only a download that matches |
 
 On homeshare (all installed and kept current by the rack agent's updater):
 ```
@@ -103,3 +107,33 @@ The dashboard only ever holds a public key and ciphertext. Both machines get the
 **Key pinning.** backup-compute pins the first key it sees for the job. If a different key is published later (for example by another machine that has the agent token, trying to get the password), it **refuses** and shows an error on the Deployments screen. If homeshare legitimately gets a new key (reinstall), bump `key_epoch` in `tasks.json`: both ends then move to a new key and a new password.
 
 **Rotation.** A new key, a lost dashboard state, or a missing account makes backup-compute set a new password and re-issue it. Nothing else changes it.
+
+## Cloud backup (Kopia + Backblaze B2)
+
+`homeshare-to-b2` takes a daily [Kopia](https://kopia.io) snapshot of `D:\HomeShare` into a B2 bucket. **For now its source is only `D:\HomeShare\School`**, to test the setup and a restore before the full upload; widening it is a one-line change to `source` in `tasks.json`.
+
+- **Private:** Kopia encrypts and deduplicates on homeshare before anything is uploaded. The bucket holds only encrypted, randomly named pack files; Backblaze can't see file names or contents.
+- **Can't be deleted or overwritten for 30 days**, even with the B2 key: the repository is created with Object Lock in *compliance* mode, and Kopia's daily full maintenance renews the locks on everything still in use.
+- **Retention:** 30 daily snapshots (plus the latest). Older ones expire through Kopia maintenance.
+- **Safety check:** a run aborts if `D:\HomeShare` is missing or empty, so a lost volume can't push the good snapshots out of retention.
+- Open files are read through Volume Shadow Copy; already-compressed media isn't recompressed.
+- The first upload (~3.4 TB) takes longer than one run's time limit; it resumes from Kopia's checkpoints on the next run.
+
+### Secrets
+
+| Secret | Where | If lost |
+|---|---|---|
+| B2 application key (bucket-scoped) | homeshare `creds\homeshare-to-b2.json`, encrypted to the machine key | Make a new key in B2, re-run the secrets script |
+| Kopia **repository password** | the same file **and your password manager** | **Unrecoverable**: the cloud copy can never be decrypted. Keep it in the password manager (and on paper) |
+
+Nothing secret is in git. Each run decrypts them into its own process only, tells Kopia not to save the password, and deletes Kopia's connection file afterwards.
+
+### Turning it on (once)
+
+1. In B2: create a **private** bucket with **Object Lock enabled** (it can only be enabled at creation), and an application key restricted to that bucket.
+2. Generate the repository password in the password manager.
+3. PR: set `kopia.bucket`, `kopia.endpoint` (`s3.<region>.backblazeb2.com`, shown on the bucket), the `sha256` in `kopia.json`, and `"enabled": true`. Merge, **Deploy all**.
+4. On homeshare, elevated: `& "$env:ProgramData\HomelabBackups\Set-CloudBackupSecrets.ps1" -Job homeshare-to-b2`
+5. The next run creates the repository. After the first upload, **test a restore** of a few files.
+
+To restore: `kopia repository connect s3 --bucket=... --endpoint=...` (with the key and password), then `kopia snapshot list` and `kopia restore <id> <target>`, or mount a snapshot with `kopia mount`.
