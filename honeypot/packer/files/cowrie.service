@@ -1,0 +1,51 @@
+# Cowrie as an unprivileged, sandboxed service. It only needs to listen on 2222/2223 and
+# write its own state; everything else is denied. No outbound network is possible anyway
+# (cloud firewall and nftables), this limits what a Cowrie bug could do on the box itself.
+[Unit]
+Description=Cowrie SSH/Telnet honeypot
+After=network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=cowrie
+Group=cowrie
+WorkingDirectory=/var/lib/cowrie
+Environment=COWRIE_STDOUT=yes PYTHONUNBUFFERED=1
+# cowrie start execs twistd by name, so the venv must be on PATH
+Environment=PATH=/opt/cowrie/bin:/usr/bin:/bin
+ExecStart=/opt/cowrie/bin/cowrie start
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cowrie
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @debug @cpu-emulation @obsolete @raw-io @reboot @swap
+UMask=0027
+MemoryMax=600M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

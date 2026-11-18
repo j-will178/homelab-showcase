@@ -1,0 +1,100 @@
+#cloud-config
+# Bastion first boot: a stock Debian droplet, configured here. Long-lived; patches itself.
+# It holds no keys that open anything: the lab's SSH sessions to the honeypot pass through it
+# end to end (ProxyJump), so it only ever sees encrypted traffic.
+
+package_update: true
+package_upgrade: true
+packages: [nftables, unattended-upgrades]
+
+ssh_pwauth: false
+disable_root: true
+ssh_deletekeys: true
+ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: |
+    ${indent(4, trimspace(host_key_private))}
+  ed25519_public: ${trimspace(host_key_public)}
+
+users:
+  - name: jump
+    shell: /usr/sbin/nologin
+    lock_passwd: true
+    ssh_authorized_keys:
+      - restrict,port-forwarding ${trimspace(lab_key)}
+  - name: hpadmin
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${trimspace(admin_key)}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/50-bastion.conf
+    permissions: "0644"
+    content: |
+      Port 2222
+      HostKey /etc/ssh/ssh_host_ed25519_key
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AuthenticationMethods publickey
+      AllowUsers jump hpadmin
+      X11Forwarding no
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      PermitTunnel no
+      GatewayPorts no
+      MaxAuthTries 3
+      LoginGraceTime 20
+
+      # The lab's key: no shell, no commands; it may only open a connection to port 47022
+      # (the cloud firewall only lets that reach the honeypot).
+      Match User jump
+          AllowTcpForwarding local
+          PermitOpen *:47022
+          PermitTTY no
+          ForceCommand /usr/sbin/nologin
+  - path: /etc/nftables.conf
+    permissions: "0644"
+    content: |
+      #!/usr/sbin/nft -f
+      # Second layer behind the DigitalOcean cloud firewall (which also restricts SSH to the
+      # lab's address and port 47022 to the honeypot). This one limits ports and logs drops.
+      flush ruleset
+      table inet bastion {
+          chain input {
+              type filter hook input priority filter; policy drop;
+              ct state invalid drop
+              ct state established,related accept
+              iif lo accept
+              tcp dport 2222 accept
+              limit rate 10/minute log prefix "bastion-drop-in: " level info
+          }
+          chain output {
+              type filter hook output priority filter; policy drop;
+              ct state established,related accept
+              oif lo accept
+              udp dport { 53, 123 } accept
+              tcp dport { 53, 80, 443, 47022 } accept
+              ip daddr 169.254.169.254 tcp dport 80 accept
+              limit rate 10/minute log prefix "bastion-drop-out: " level warn
+          }
+          chain forward {
+              type filter hook forward priority filter; policy drop;
+          }
+      }
+  - path: /etc/apt/apt.conf.d/52unattended-reboot
+    permissions: "0644"
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "09:30";
+
+runcmd:
+  - [sh, -c, "apt-get -y purge droplet-agent do-agent || true"]
+  - [nft, -c, -f, /etc/nftables.conf]
+  - [systemctl, enable, --now, nftables]
+  - [sshd, -t]
+  - [systemctl, restart, ssh]
+  - [systemctl, enable, --now, unattended-upgrades]

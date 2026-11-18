@@ -134,7 +134,14 @@ Planned:
 ## Open items
 
 - [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
-- [ ] Cloud honeypot (DigitalOcean): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by OpenTofu on optiplex-management; reached only through a bastion (inbound SSH from the home IP only); logs pulled by optiplex-management into the dashboard's Honeypot screen (simulated data until then)
+- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), not deployed): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on optiplex-management; reached only through a bastion (inbound SSH from the home IP only); logs pulled by optiplex-management into the dashboard's Honeypot screen (simulated data until then). Planned network paths once deployed:
+
+  | From | To | Port | Allowed by |
+  |---|---|---|---|
+  | optiplex-management (home IP) | bastion reserved IP | TCP 2222 | bastion cloud firewall |
+  | bastion | honeypot | TCP 47022 | honeypot cloud firewall (bastion tag only) |
+  | internet (home IP only while `exposure = "lab-only"`) | honeypot | TCP 22, 23 (Cowrie) | honeypot cloud firewall |
+  | honeypot | anywhere | none | no outbound rules |
 - [ ] UPS graceful shutdown
 - [ ] Managed switch + VLANs
 - [ ] GPU for Jellyfin transcoding / local AI (homeshare or a separate box)

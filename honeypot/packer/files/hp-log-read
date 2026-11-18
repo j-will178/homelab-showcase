@@ -1,0 +1,114 @@
+#!/usr/bin/python3
+"""
+hp-log-read: the only command optiplex-management's key can run on the honeypot
+(sshd ForceCommand for user "collector"). Hands out Cowrie's JSON log in chunks.
+
+    ssh collector@honeypot read                 from the start of the oldest log file
+    ssh collector@honeypot read INODE OFFSET    continue where the last read stopped
+    ssh collector@honeypot status               position of the end of the newest file
+
+Output: one JSON header line, then up to MAX_BYTES of whole log lines.
+    {"v": 1, "boot_id": "...", "inode": N, "offset": N, "more": true|false}
+"inode"/"offset" are where the NEXT read should continue; "more" means there's more to fetch now.
+
+Cowrie rotates cowrie.json daily (renaming it cowrie.json.YYYY-MM-DD). A rename keeps the
+inode, so a position stays valid across rotation. An unknown inode (new VM after a rebuild,
+or a file that's gone) starts again from the oldest file, so nothing is skipped; boot_id
+tells the reader it's a different machine. Arguments are digits only; anything else is refused.
+"""
+
+import json
+import os
+import re
+import sys
+
+LOG_DIR = "/var/lib/cowrie/log"
+MAX_BYTES = 4 * 1024 * 1024
+
+
+def log_files():
+    """Oldest first: rotated files (cowrie.json.YYYY-MM-DD sorts by date), then the live one."""
+    try:
+        names = os.listdir(LOG_DIR)
+    except OSError:
+        return []
+    rotated = sorted(n for n in names if re.fullmatch(r"cowrie\.json\.\d{4}-\d{2}-\d{2}(?:_\d+)?", n))
+    ordered = rotated + (["cowrie.json"] if "cowrie.json" in names else [])
+    out = []
+    for n in ordered:
+        p = os.path.join(LOG_DIR, n)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append((p, st.st_ino, st.st_size))
+    return out
+
+
+def boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def header(inode, offset, more):
+    return json.dumps({"v": 1, "boot_id": boot_id(), "inode": inode, "offset": offset, "more": more}) + "\n"
+
+
+def read(inode=None, offset=0):
+    files = log_files()
+    if not files:
+        return header(None, 0, False).encode(), b""
+    i = next((k for k, f in enumerate(files) if f[1] == inode), None)
+    if i is None:
+        i, offset = 0, 0
+    offset = max(0, min(offset, files[i][2]))
+    chunks, budget = [], MAX_BYTES
+    while True:
+        path, ino, size = files[i]
+        if offset < size and budget > 0:
+            with open(path, "rb") as f:
+                f.seek(offset)
+                data = f.read(min(budget, size - offset))
+            cut = data.rfind(b"\n") + 1          # whole lines only; the rest is read next time
+            if cut == 0 and len(data) == budget:
+                cut = len(data)                   # a single line longer than the budget: pass it through in parts
+            chunks.append(data[:cut])
+            offset += cut
+            budget -= cut
+            if cut < len(data):
+                break
+        if offset >= size and i + 1 < len(files) and budget > 0:
+            i, offset = i + 1, 0                 # rotated file finished: carry on with the next one
+            continue
+        break
+    path, ino, size = files[i]
+    more = offset < size or i + 1 < len(files)
+    return header(ino, offset, more).encode(), b"".join(chunks)
+
+
+def main():
+    args = os.environ.get("SSH_ORIGINAL_COMMAND", "").split()
+    if args == ["status"]:
+        files = log_files()
+        last = files[-1] if files else (None, None, 0)
+        sys.stdout.write(header(last[1], last[2], False))
+        return 0
+    if args == ["read"]:
+        head, data = read()
+    elif len(args) == 3 and args[0] == "read" and args[1].isdigit() and args[2].isdigit() and len(args[1]) < 20 and len(args[2]) < 20:
+        head, data = read(int(args[1]), int(args[2]))
+    else:
+        sys.stderr.write("usage: read | read INODE OFFSET | status\n")
+        return 2
+    out = sys.stdout.buffer
+    out.write(head)
+    out.write(data)
+    out.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

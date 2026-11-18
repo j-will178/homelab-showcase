@@ -1,0 +1,33 @@
+#cloud-config
+# Honeypot first boot. Everything else is already in the Packer image; this only adds what is
+# specific to this instance: its SSH host key, the two authorized keys, and the bastion address.
+# (Readable by root on the VM through the metadata service: nothing here is a secret worth more
+# than this disposable VM's own identity.)
+
+ssh_deletekeys: true
+ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: |
+    ${indent(4, trimspace(host_key_private))}
+  ed25519_public: ${trimspace(host_key_public)}
+
+write_files:
+  - path: /home/collector/.ssh/authorized_keys
+    permissions: "0600"
+    content: |
+      restrict ${trimspace(lab_key)}
+  - path: /home/hpadmin/.ssh/authorized_keys
+    permissions: "0600"
+    content: |
+      ${trimspace(admin_key)}
+  - path: /etc/nftables.d/bastion.nft
+    permissions: "0644"
+    content: |
+      add element inet honeypot bastion { ${bastion_ip} }
+
+runcmd:
+  - [chown, -R, "collector:collector", /home/collector/.ssh]
+  - [chown, -R, "hpadmin:hpadmin", /home/hpadmin/.ssh]
+  - [chmod, "700", /home/collector/.ssh, /home/hpadmin/.ssh]
+  - [systemctl, restart, nftables]
+  - [systemctl, restart, ssh]

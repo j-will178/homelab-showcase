@@ -1,0 +1,12 @@
+# Terraform/Packer state and inputs live on optiplex-management only: the state holds resource IDs,
+# the home IP and host keys. .terraform.lock.hcl (provider checksums) IS committed once generated.
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
+terraform/*.auto.tfvars
+terraform/crash.log
+terraform/*.tfplan
+packer/manifest.json
+packer/packer_cache/

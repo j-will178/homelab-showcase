@@ -1,0 +1,6 @@
+# Who "gets in" (Cowrie's default policy): root with any password except "root" and "123456",
+# so bots usually succeed within a few tries and show what they do next. Format: user:x:password,
+# "!" = refused, "*" = any password. First match wins.
+root:x:!root
+root:x:!123456
+root:x:*
