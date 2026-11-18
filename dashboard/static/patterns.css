@@ -1,6 +1,6 @@
 /* ---------- attack patterns screen ---------- */
-#patterns { height: 100%; padding: 22px 28px 56px; display: grid; gap: 14px;
-  grid-template-columns: minmax(0, 1fr) 560px; grid-template-rows: auto minmax(0, 1fr) auto;
+#patterns { height: 100%; overflow-y: auto; padding: 22px 28px 56px; display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 560px; grid-template-rows: auto minmax(460px, 1fr) auto;
   grid-template-areas: "head head" "table spot" "bottom bottom"; }
 #patterns > .smart-head { grid-area: head; }
 #patterns .ppanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; min-height: 0; overflow: hidden; }
@@ -38,7 +38,7 @@
 #patSpot .facts div { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; }
 #patSpot .facts .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 #patSpot .facts .v { font-family: var(--mono); font-size: 15px; font-weight: 600; }
-#patSpot pre { margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+#patSpot pre { flex-shrink: 0; margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
   background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 13.5em; overflow: hidden; }
 #patSpot .ps { color: var(--accent); }
 #patSpot .cols { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px; }
@@ -57,3 +57,24 @@
 #patUnrec .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #patUnrec code { font-family: var(--mono); font-size: 11px; }
 #patUnrec li { gap: 8px; }
+
+/* Shorter or narrower screens: keep the table and spotlight readable, shorten the lower lists, scroll if needed. */
+@media (max-height: 950px) {
+  #patterns { gap: 10px; padding-top: 16px; }
+  #patNew li:nth-child(n+6), #patUnrec li:nth-child(n+7) { display: none; }
+}
+@media (max-width: 1600px) {
+  #patterns { grid-template-columns: minmax(0, 1fr) 420px; padding-left: 20px; padding-right: 20px; }
+  #patTable table { font-size: 12px; }
+  #patTable th, #patTable td { padding-left: 6px; padding-right: 6px; }
+  #patTable td.lbl { min-width: 180px; }
+  #patTable .peek { max-width: 240px; }
+  #patTable th:nth-child(6), #patTable td:nth-child(6) { display: none; }   /* countries: still in the spotlight */
+  .spark { width: 60px; }
+  #patSpot .facts { gap: 6px; }
+  #patSpot .facts div { padding: 5px 8px; }
+  #patSpot .facts .v { font-size: 13px; }
+  #patSpot pre { max-height: calc(6 * 1.5em + 18px); }
+  #patSpot .cols { grid-template-columns: 1fr 1fr; }
+  #patSpot .cols > div:nth-child(3) { grid-column: span 2; }
+}

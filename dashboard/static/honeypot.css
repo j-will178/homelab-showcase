@@ -1,6 +1,6 @@
 /* ---------- honeypot screen ---------- */
-#honeypot { height: 100%; padding: 22px 28px 56px; display: grid; gap: 14px;
-  grid-template-columns: minmax(0, 1fr) 440px; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+#honeypot { height: 100%; overflow-y: auto; padding: 22px 28px 56px; display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 440px; grid-template-rows: auto auto minmax(330px, 1fr) auto auto;
   grid-template-areas: "head head" "stats stats" "map side" "tl side" "tops tops"; }
 #honeypot > .smart-head { grid-area: head; }
 #hpStats { grid-area: stats; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
@@ -23,7 +23,7 @@
 @keyframes hpPulse { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #hpMap .pulse { animation: none; opacity: 0; } }
 
-#hpTimeline { grid-area: tl; }
+#hpTimeline { grid-area: tl; min-height: auto; }   /* never squeezed below its content when the screen scrolls */
 #hpTimeline svg { width: 100%; height: 70px; display: block; }
 #hpTimeline .b { fill: var(--accent); fill-opacity: 0.35; }
 #hpTimeline .sh { fill: var(--warn); fill-opacity: 0.9; }
@@ -74,3 +74,21 @@
 #hpTops .bars .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #hpTops code { font-family: var(--mono); font-size: 11px; }
 #honeypot .none { color: var(--muted); font-size: 12px; }
+
+/* Shorter or narrower screens (a laptop at 125% scaling is ~1536x740): the map keeps a usable
+   minimum height, the lists get shorter, and the screen scrolls if it still doesn't fit.
+   A 1080p wall display is unaffected. */
+@media (max-height: 950px) {
+  #honeypot { gap: 10px; padding-top: 16px; }
+  .hstat { padding: 7px 12px; }
+  .hstat .v { font-size: 19px; }
+  #hpTimeline svg { height: 48px; }
+  #hpTops .bars li:nth-child(n+6) { display: none; }
+}
+@media (max-width: 1600px) {
+  #honeypot { grid-template-columns: minmax(0, 1fr) 380px; padding-left: 20px; padding-right: 20px; }
+  #hpStats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #hpTops { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #hpTops #hpCommands { grid-column: span 2; }
+  #hpFeed li { grid-template-columns: 30px 116px 58px minmax(0, 1fr); }
+}

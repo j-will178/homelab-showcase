@@ -7,7 +7,7 @@
   const num = v => (typeof v === 'number' && isFinite(v) ? v.toLocaleString('en-US') : '—');
   const flag = cc => (cc && /^[A-Za-z]{2}$/.test(cc)) ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 127397 + c.charCodeAt(0))) : '🏳';
   const ACTIVE_MS = 3000, IDLE_MS = 30000;
-  let data = null, fetchedAt = 0, active = false, world = null, projection = null, timer = null;
+  let data = null, fetchedAt = 0, active = false, world = null, projection = null, timer = null, dotScale = 1;
 
   function ago(s) {
     if (typeof s !== 'number') return '—';
@@ -37,6 +37,7 @@
     const w = el.clientWidth, h = el.clientHeight;
     if (!w || !h) return;
     projection = d3.geoNaturalEarth1().fitExtent([[8, 8], [w - 8, h - 8]], world.fit);
+    dotScale = Math.max(0.45, Math.min(1, Math.min(w / 1300, h / 400)));   // smaller map, smaller dots
     const path = d3.geoPath(projection);
     svg.attr('viewBox', `0 0 ${w} ${h}`).selectAll('*').remove();
     svg.append('path').attr('class', 'land').attr('d', path(world.land));
@@ -54,7 +55,7 @@
     for (const p of [...pts].reverse()) {          // biggest last = on top
       const xy = projection([p.lon, p.lat]);
       if (!xy) continue;
-      const r = 2.5 + 11 * Math.sqrt(p.n / max);
+      const r = (2.5 + 11 * Math.sqrt(p.n / max)) * dotScale;
       const fresh = p.last_age_s + since() < 60;
       g.append('circle').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', r)
         .attr('class', fresh ? 'pt fresh' : 'pt')
@@ -187,7 +188,12 @@
     if (active) { drawMap(); refresh(); }
     schedule();
   });
-  window.addEventListener('resize', () => { if (active) drawMap(); });
+  // Redraw when the map's box changes size (window resize, zoom/scaling, layout settling).
+  let lastSize = '';
+  new ResizeObserver(() => {
+    const el = $('hpMap'), size = `${el.clientWidth}x${el.clientHeight}`;
+    if (size !== lastSize) { lastSize = size; drawMap(); }
+  }).observe($('hpMap'));
 
   loadWorld().then(() => { drawMap(); refresh(); }).catch(e => console.warn('honeypot: map', e));
   schedule();
