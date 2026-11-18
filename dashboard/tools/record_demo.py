@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Record the README hero: the static demo cycling through its screens and playing a
-"Deploy all" rollout, with a play button and "Open the live demo" drawn over it,
+"Deploy all" rollout and the honeypot screens, with a play button and "Open the live demo" drawn over it,
 encoded as an animated WebP.
 
     python3 dashboard/tools/record_demo.py showcase/screenshots/demo.webp
@@ -56,7 +56,7 @@ async def record(site_url, overlay_path, video_dir):
         await page.set_content(OVERLAY)
         await page.screenshot(path=overlay_path, omit_background=True)
         await page.close()
-        # The demo: noise -> drives -> compute -> tasks -> deployments, then a rollout (5x speed).
+        # The demo: noise -> drives -> compute -> tasks -> deployments, a rollout (5x speed), then honeypot and attack patterns.
         ctx = await browser.new_context(viewport={"width": W, "height": H}, record_video_dir=video_dir, record_video_size={"width": W, "height": H})
         page = await ctx.new_page()
         await page.add_init_script("document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');"
@@ -67,6 +67,10 @@ async def record(site_url, overlay_path, video_dir):
         await page.keyboard.press("r")                # stop rotating; stay on Deployments
         await page.click("#deployAllBtn")
         await page.wait_for_timeout(13000)
+        await page.keyboard.press("6")                # then the honeypot screens
+        await page.wait_for_timeout(4500)
+        await page.keyboard.press("7")
+        await page.wait_for_timeout(4500)
         await ctx.close()
         await browser.close()
 
