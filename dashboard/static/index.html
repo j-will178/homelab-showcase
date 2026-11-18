@@ -9,6 +9,8 @@
 <link rel="stylesheet" href="compute.css">
 <link rel="stylesheet" href="tasks.css">
 <link rel="stylesheet" href="deploy.css">
+<link rel="stylesheet" href="honeypot.css">
+<link rel="stylesheet" href="patterns.css">
 </head>
 <body data-screen="noise">
 <div id="screens">
@@ -141,6 +143,53 @@
     </div>
   </section>
 
+  <!-- ===== Screen 6: honeypot ===== -->
+  <section class="screen" data-id="honeypot" data-title="Honeypot">
+    <div id="honeypot">
+      <header class="smart-head">
+        <div>
+          <h1>Honeypot</h1>
+          <p class="sub" id="hpSub">Cowrie SSH/Telnet honeypot · last 24 h</p>
+        </div>
+        <div id="hpSummary" class="chips"></div>
+      </header>
+      <div id="hpStats"></div>
+      <div id="hpMapWrap" class="hpanel"><svg id="hpMap" aria-label="Where attackers connect from"></svg></div>
+      <div id="hpTimeline" class="hpanel"></div>
+      <div id="hpSide">
+        <div class="hpanel"><h2>Recent shell sessions <span class="muted">· what they typed</span></h2><div id="hpShells"></div></div>
+        <div class="hpanel"><h2>Live feed</h2><ul id="hpFeed"></ul></div>
+      </div>
+      <div id="hpTops">
+        <div id="hpUsers"></div><div id="hpPasswords"></div><div id="hpCommands"></div><div id="hpCountries"></div><div id="hpClients"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 7: attack patterns ===== -->
+  <section class="screen" data-id="patterns" data-title="Attack patterns">
+    <div id="patterns">
+      <header class="smart-head">
+        <div>
+          <h1>Attack patterns</h1>
+          <p class="sub">Honeypot shell sessions over 30 days, grouped by the script they ran (URLs, file names and keys normalized) · summaries are rule-based</p>
+        </div>
+        <div id="patSummary" class="chips"></div>
+      </header>
+      <div id="patTable" class="ppanel">
+        <table>
+          <thead><tr><th>#</th><th>Pattern</th><th class="n">24 h</th><th class="n">30 d</th><th class="n">IPs</th><th class="n">Countries</th><th>Spread</th><th class="n">First seen</th><th class="n">Last seen</th><th>14 days</th></tr></thead>
+          <tbody id="patRows"></tbody>
+        </table>
+      </div>
+      <div id="patSpot" class="ppanel"></div>
+      <div id="patBottom">
+        <div class="ppanel"><h2>New in the last 24 h</h2><ul id="patNew"></ul></div>
+        <div class="ppanel"><h2>Unrecognized commands <span class="muted">· no rule matched yet: candidates for new rules</span></h2><ol id="patUnrec" class="bars"></ol></div>
+      </div>
+    </div>
+  </section>
+
 </div>
 
 <!-- slideshow controls -->
@@ -161,5 +210,7 @@
 <script src="compute.js"></script>
 <script src="tasks.js"></script>
 <script src="deploy.js"></script>
+<script src="honeypot.js"></script>
+<script src="patterns.js"></script>
 </body>
 </html>

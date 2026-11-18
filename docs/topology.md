@@ -4,7 +4,7 @@ This is the source of truth for how the lab is laid out. **Update it in the same
 
 Diagrams are Mermaid, so GitHub renders them inline and changes show up as readable diffs.
 
-_Last updated: 2026-11-17_
+_Last updated: 2026-11-18_
 
 ## Hosts
 
@@ -80,7 +80,7 @@ Notes:
 
 | Host | Service | Port | Deployed by |
 |---|---|---|---|
-| optiplex-management | `rack-dashboard` (noise map, drive health, compute; replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN) | `homelab-deploy.timer` |
+| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated data for now; 30 days of honeypot history in SQLite once real); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN) | `homelab-deploy.timer` |
 | optiplex-management | `rack-metrics-agent.service` (10 s loop) + `rack-smart-agent.timer` (15 min) | → 127.0.0.1:8080 | `homelab-deploy.timer` |
 | homeshare, backup-compute | Scheduled task *Rack Dashboard SMART agent* (`Invoke-RackAgent.ps1`, every minute: keeps task *Rack Dashboard metrics* running, a 10 s loop; every 15 min: update + SMART) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `Install-SmartAgent.ps1 -AutoUpdate`) |
 | OPNsense | configd action `rackagent smart-push` (`run.sh`) + GUI cron **every minute** (keeps the 10 s metrics loop running under `daemon -r`; update + SMART every 15 min) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `install-opnsense.sh`) |
@@ -134,6 +134,7 @@ Planned:
 ## Open items
 
 - [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
+- [ ] Cloud honeypot (DigitalOcean): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by OpenTofu on optiplex-management; reached only through a bastion (inbound SSH from the home IP only); logs pulled by optiplex-management into the dashboard's Honeypot screen (simulated data until then)
 - [ ] UPS graceful shutdown
 - [ ] Managed switch + VLANs
 - [ ] GPU for Jellyfin transcoding / local AI (homeshare or a separate box)

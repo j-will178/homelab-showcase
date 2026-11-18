@@ -38,6 +38,43 @@
     return m;
   }
 
+  // ---- honeypot: everything ages; the feed and counters advance through a pre-generated stream ----
+  const HP_COUNT = { login_failed: 'login_attempts', login_success: 'login_attempts', command: 'commands', download: 'downloads', connect: 'sessions' };
+  function honeypotNow() {
+    const h = clone(data.honeypot), st = data.honeypot_stream, e = elapsed();
+    if (!st || !st.rows.length) return h;
+    const loops = Math.floor(e / st.period_s), pos = e - loops * st.period_s;
+    const bump = (r, times) => {
+      const k = HP_COUNT[r.kind];
+      if (k) h.summary[k] += times;
+      if (r.kind === 'login_success') h.summary.logins_ok += times;
+    };
+    // whole loops by arithmetic, then the current loop row by row (keeps this cheap however long the page is open)
+    const recent = [];
+    for (const r of st.rows) {
+      if (r.offset_s <= pos) { bump(r, loops + 1); recent.push(Object.assign({}, r, { age_s: pos - r.offset_s })); }
+      else if (loops > 0) bump(r, loops);
+    }
+    if (recent.length < 40 && loops > 0) {          // feed continues from the end of the previous loop
+      const tail = st.rows.slice(-(40 - recent.length)).map(r => Object.assign({}, r, { age_s: pos + st.period_s - r.offset_s }));
+      recent.unshift(...tail);
+    }
+    h.summary.sessions_per_min = Math.round(st.rows.filter(r => r.kind === 'connect').length / (st.period_s / 60) * 10) / 10;
+    const age = x => { if (x && typeof x.age_s === 'number') x.age_s += e; };
+    h.feed.forEach(age); h.shells.forEach(age);
+    h.points.forEach(p => { p.last_age_s += e; });
+    h.feed = recent.slice(-40).reverse().concat(h.feed).slice(0, 40);
+    h.last_event_age_s = recent.length ? recent[recent.length - 1].age_s : h.last_event_age_s + e;
+    return h;
+  }
+
+  // ---- attack patterns: a 30-day view, so it only needs to age ----
+  function patternsNow() {
+    const p = clone(data.honeypot_patterns), e = elapsed();
+    for (const x of [...p.patterns, ...p.new]) { x.first_age_s += e; x.last_age_s += e; }
+    return p;
+  }
+
   // ---- Deploy all: a scripted rollout of a new commit ----
   const NEW = { commit: 'd3m0c0de5e1f', subject: 'Demo: a merged pull request' };
   const PLAN = {   // seconds after the press: picked up, then running for
@@ -68,7 +105,7 @@
 
   window.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input.url;
-    const m = /^(?:\.\/)?api\/(\w+)/.exec(url);
+    const m = /^(?:\.\/)?api\/([\w/]+)/.exec(url);
     if (!m) return realFetch(input, init);
     await ready;
     const method = (init && init.method) || 'GET';
@@ -76,6 +113,8 @@
       case 'smart': return json(data.smart);
       case 'metrics': return json(metricsNow());
       case 'tasks': return json(data.tasks);
+      case 'honeypot': return json(honeypotNow());
+      case 'honeypot/patterns': return json(patternsNow());
       case 'deploy':
         if (method === 'POST') {
           if (deployAt !== null && (Date.now() - deployAt) / 1000 < 60) {

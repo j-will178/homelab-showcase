@@ -9,6 +9,8 @@ A full-screen slideshow for the rack monitor, served by the OptiPlex. It rotates
 | 3 | **Compute**: CPU (with a per-core strip), memory, GPU, network, disk I/O, top processes, uptime, pending reboot, with charts of the last hour | Agents on each machine → `POST /api/metrics` (every 10 s) |
 | 4 | **Scheduled tasks**: every task in Task Scheduler's `\Homelab\` folder: state, last/next run, overdue; for backup mirror jobs also files/bytes copied and removed, failures and a 30-run history; for the Kopia cloud job, files changed/unchanged, unreadable files and snapshot size | Agents on Windows hosts, about once a minute, in the metrics posts |
 | 5 | **Deployments**: branch, commit, last check/change, result and git version per host, plus a **Deploy all** button | The same metrics posts carry each host's updater status |
+| 6 | **Honeypot**: Cowrie SSH/Telnet honeypot, last 24 h: sessions, login attempts, who got a (fake) shell and a summary of what they tried to do (tags + pattern seen N times), blocked downloads, where attackers connect from, top usernames/passwords/commands/countries/SSH clients, live feed | **Simulated for now** (`honeypot.py`'s `Simulator`, Cowrie-format events through the real parser). The cloud honeypot's log plugs into the same store later |
+| 7 | **Attack patterns**: honeypot shell sessions over 30 days grouped by the script they ran: leaderboard (24 h / 30 d, IPs, countries, botnet vs single source, first/last seen, 14-day trend), a rotating spotlight (summary, normalized script, credentials, countries, payload hosts), patterns new in 24 h, and commands no rule recognizes yet | Same honeypot data (simulated for now) |
 
 ```
 OPNsense ──syslog/UDP 5514──────────────┐
@@ -25,7 +27,7 @@ Everything is served locally (no CDNs). The only Python dependency is `maxminddb
 |---|---|
 | **→** / **Space** / **PageDown** | Next screen |
 | **←** / **PageUp** | Previous screen |
-| **1**–**9** | Jump to screen (1 noise, 2 drives, 3 compute, 4 tasks, 5 deployments) |
+| **1**–**9** | Jump to screen (1 noise, 2 drives, 3 compute, 4 tasks, 5 deployments, 6 honeypot, 7 attack patterns) |
 | **R** | Pause / resume rotation |
 | **F** | Fullscreen |
 | **P** / **Shift+P** | Next / previous map projection (noise screen) |
@@ -33,7 +35,7 @@ Everything is served locally (no CDNs). The only Python dependency is `maxminddb
 
 Screens change with a **halftone wave**: a band of dots riding a moving wave/noise surface, shaded by its slope, sweeps across behind a drifting dark fog; the fog fades in and out while the dots stay crisp, and the screen switches underneath at full cover (~2.2 s). `?transition=fade` or `?transition=none` turn it down or off; it also drops to a plain switch automatically if the OS asks for reduced motion.
 
-URL: `?interval=120` (seconds per screen, `0` = no rotation) · `?screen=smart` / `compute` / `tasks` / `deploy` (start screen) · `?projection=mollweide` · `?fade=120` · `?home=lat,lon` · `?transition=wave|fade|none` · `?daynight=0` · `?demo=1`
+URL: `?interval=120` (seconds per screen, `0` = no rotation) · `?screen=smart` / `compute` / `tasks` / `deploy` / `honeypot` / `patterns` (start screen) · `?projection=mollweide` · `?fade=120` · `?home=lat,lon` · `?transition=wave|fade|none` · `?daynight=0` · `?demo=1`
 
 Wall display: `chromium --kiosk "http://optiplex-management.home.arpa:8080/?projection=robinson"`
 
@@ -179,3 +181,18 @@ sudo systemctl start rack-dashboard
 - Hosts that stop reporting disappear after 7 days.
 - Map locations are approximate (city level at best). Much of the noise comes from cloud providers, so expect hot spots at data-centre cities.
 - The collector logs map counters every 5 minutes and one line per SMART report: `journalctl -u rack-dashboard`.
+
+## Honeypot screen
+
+`honeypot.py` turns [Cowrie](https://github.com/cowrie/cowrie) JSON log lines into events (`parse_cowrie`) and keeps the last 24 h in memory (`HoneypotStore`) for the Honeypot screen (`GET /api/honeypot`, every 3 s while on screen). `HoneypotDB` keeps **30 days** in SQLite (every raw event plus one row per session; older rows are deleted hourly) for the Attack patterns screen (`GET /api/honeypot/patterns`).
+
+**Session summaries and patterns** (`honeypot_rules.py`, no AI):
+- `normalize` replaces what bots vary per run (URLs, IPs, SSH keys, base64, random names, and the payload file names a session downloads) with placeholders; the hash of the normalized command sequence is the session's **pattern**, so one botnet's runs group together however often it rotates servers and file names.
+- `RULES` map commands to tags (`recon`, `persistence`, `cover-tracks`, `malware-drop`, `execution`, `miner-hunt`, `credential-access`, `iot-probe`) and phrases, which make the summary sentence. Commands no rule matches are listed on the Attack patterns screen: that's the to-do list for new rules.
+- Fingerprints, tags and summaries are computed from the stored commands when read, never stored, so improving a rule re-labels the whole 30-day history.
+
+**The data is simulated for now** (and kept in RAM only, so it can never mix with the real history on disk). `Simulator` writes Cowrie-format lines (same event ids and fields, and Cowrie's default user database: `root` gets in with any password except `root` and `123456`) and feeds them through the same parser, so the parsing, analysis and aggregation are already the real ones. Its scripts vary payload hosts, file names and keys like real botnets, and rarer "campaigns" start at different times (including during the last day), so grouping and "new in 24 h" are exercised. The screen says *simulated data* until a real source is connected. Simulated attackers use documentation IP ranges and `example.net`.
+
+Everything on this screen is typed by attackers, so it's treated as hostile: fields are length-limited and stripped of control characters when parsed, unknown event ids are dropped, the page escapes everything, and download URLs are shown defanged (`hxxp://`) and never as links.
+
+Planned: the cloud honeypot (Cowrie behind a bastion, no outbound access; see `docs/topology.md` once built) and a puller on optiplex-management that reads its log through the bastion into this store.

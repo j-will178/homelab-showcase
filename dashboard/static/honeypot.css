@@ -1,0 +1,76 @@
+/* ---------- honeypot screen ---------- */
+#honeypot { height: 100%; padding: 22px 28px 56px; display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 440px; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "head head" "stats stats" "map side" "tl side" "tops tops"; }
+#honeypot > .smart-head { grid-area: head; }
+#hpStats { grid-area: stats; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.hstat { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.hstat .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.hstat .v { font-family: var(--mono); font-size: 24px; font-weight: 600; }
+.hstat .s { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hstat.warn .v { color: var(--warn); }
+.hstat.crit .v { color: var(--crit); }
+
+.hpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; min-height: 0; }
+.hpanel h2, #hpTops h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+#hpMapWrap { grid-area: map; position: relative; padding: 0; overflow: hidden; }
+#hpMap { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#hpMap .land { fill: var(--land); }
+#hpMap .borders { fill: none; stroke: var(--border); stroke-width: 0.5; }
+#hpMap .pt { fill: var(--crit); fill-opacity: 0.35; stroke: var(--crit); stroke-opacity: 0.7; stroke-width: 0.8; }
+#hpMap .pt.fresh { fill-opacity: 0.6; stroke-opacity: 1; }
+#hpMap .pulse { fill: none; stroke: var(--crit); stroke-width: 1.2; transform-box: fill-box; transform-origin: center; animation: hpPulse 2.4s ease-out infinite; }
+@keyframes hpPulse { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #hpMap .pulse { animation: none; opacity: 0; } }
+
+#hpTimeline { grid-area: tl; }
+#hpTimeline svg { width: 100%; height: 70px; display: block; }
+#hpTimeline .b { fill: var(--accent); fill-opacity: 0.35; }
+#hpTimeline .sh { fill: var(--warn); fill-opacity: 0.9; }
+#hpTimeline .key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: -1px; }
+#hpTimeline .key.sh { background: var(--warn); }
+#hpTimeline .axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+
+#hpSide { grid-area: side; display: grid; grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; min-height: 0; }
+#hpSide .hpanel { display: flex; flex-direction: column; overflow: hidden; }
+#hpShells { display: grid; gap: 8px; overflow: hidden; align-content: start; flex: 1; min-height: 0; }
+.shell { border: 1px solid var(--line); border-left: 2px solid var(--warn); border-radius: 0 6px 6px 0; padding: 7px 10px; min-width: 0; }
+.shell header { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.shell header b { font-family: var(--mono); color: var(--warn); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell header span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; align-items: center; }
+.shell .ncmd { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.shell .sum { margin: 5px 0 0; font-size: 12.5px; line-height: 1.4; }
+.shell .pline { margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.pnew { color: var(--warn); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; font-size: 10px; }
+.tag { font-style: normal; font-family: var(--mono); font-size: 10px; padding: 0 5px; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.tag.t-recon { color: #93c5fd; }
+.tag.t-persistence, .tag.t-cover-tracks { color: #f0abfc; }
+.tag.t-malware-drop, .tag.t-execution { color: var(--crit); }
+.tag.t-miner-hunt { color: #fdba74; }
+.tag.t-credential-access { color: var(--warn); }
+.tag.t-iot-probe { color: #5eead4; }
+.shell pre { margin: 5px 0 0; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.shell .ps { color: var(--accent); }
+.shell .dim { color: var(--muted); }
+.shell .dls { margin-top: 4px; display: grid; gap: 2px; font-family: var(--mono); font-size: 11px; color: var(--crit); }
+.shell .dls span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell .dls em { font-style: normal; font-size: 10px; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+
+#hpFeed { list-style: none; margin: 0; padding: 0; overflow: hidden; font-family: var(--mono); font-size: 11px; display: grid; gap: 2px; align-content: start; }
+#hpFeed li { display: grid; grid-template-columns: 30px 128px 62px minmax(0, 1fr); gap: 8px; align-items: center; height: 19px; }
+#hpFeed .t { color: var(--muted); text-align: right; }
+#hpFeed .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hpFeed .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hpFeed .kind { font-size: 10px; text-align: center; border-radius: 3px; border: 1px solid currentColor; padding: 0 4px; color: var(--muted); }
+#hpFeed .kind.fail { color: #f0a0a0; }
+#hpFeed .kind.ok { color: var(--warn); }
+#hpFeed .kind.cmd { color: var(--accent); }
+#hpFeed .kind.dl { color: var(--crit); }
+
+#hpTops { grid-area: tops; display: grid; grid-template-columns: 1fr 1fr 2fr 1fr 1.3fr; gap: 14px; }
+#hpTops > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+#hpTops .bars li { gap: 8px; }
+#hpTops .bars .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#hpTops code { font-family: var(--mono); font-size: 11px; }
+#honeypot .none { color: var(--muted); font-size: 12px; }

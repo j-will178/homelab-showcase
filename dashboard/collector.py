@@ -12,6 +12,9 @@ Serves the rack dashboard (a slideshow of screens) and feeds its screens:
     (bearer token); the page reads them back from GET /api/smart.
   * Compute: the same agents POST a metrics sample every 10 seconds to
     /api/metrics; GET /api/metrics returns the latest + ~1 h of history.
+  * Honeypot: Cowrie events aggregated over 24 h at GET /api/honeypot, and attack
+    patterns over 30 days at GET /api/honeypot/patterns. For now SIMULATED
+    (honeypot.Simulator); the real honeypot's log plugs into the same store.
 
 Only dependency outside the standard library: maxminddb  (pip install maxminddb)
 
@@ -34,6 +37,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import creds
+import honeypot
 import metrics
 import smart
 
@@ -202,7 +206,8 @@ def syslog_listener(port, pipeline):
                 log.exception("failed to handle line: %r", line[:200])
 
 
-def make_handler(broker, page_config, smart_store=None, agent_token=None, metrics_store=None, deploy=None, cred_store=None):
+def make_handler(broker, page_config, smart_store=None, agent_token=None, metrics_store=None, deploy=None, cred_store=None,
+                 honeypot_store=None):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(STATIC_DIR), **kw)
@@ -227,6 +232,10 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(200, dict(view, request=deploy.info() if deploy else None))
             if path in ("/api/creds/key", "/api/creds/secret"):
                 return self._creds_get(path.rsplit("/", 1)[1])
+            if path == "/api/honeypot":
+                return self._json(200, honeypot_store.view() if honeypot_store else {"source": None})
+            if path == "/api/honeypot/patterns":
+                return self._json(200, honeypot_store.patterns_view() if honeypot_store else {"source": None})
             return super().do_GET()
 
         def _authorized(self, what):
@@ -419,6 +428,21 @@ def main():
                 i += 1
         threading.Thread(target=demo_metrics, daemon=True).start()
 
+    # Honeypot: simulated Cowrie events until the real honeypot's log is connected
+    # (same parser, analysis and aggregation as the real feed will use; see honeypot.py).
+    # Simulated history lives in RAM only, so it can never mix with the real 30-day history on disk.
+    honeypot_store = honeypot.HoneypotStore(source="simulated", db=honeypot.HoneypotDB(":memory:"))
+    hp_sim = honeypot.Simulator(honeypot_store)
+    hp_sim.backfill()
+
+    def honeypot_background():
+        hp_sim.backfill_history()            # days 2-30 for the Attack patterns screen (a few seconds)
+        threading.Thread(target=hp_sim.run_forever, daemon=True).start()
+        while True:                          # keep 30 days, drop older
+            time.sleep(3600)
+            honeypot_store.db.purge()
+    threading.Thread(target=honeypot_background, daemon=True).start()
+
     broker = Broker()
     if not args.demo:
         if not args.db:
@@ -432,7 +456,8 @@ def main():
                 log.info("stats %s", pipeline.stats)
         threading.Thread(target=report, daemon=True).start()
 
-    server = ThreadingHTTPServer((args.bind, args.http_port), make_handler(broker, page_config, smart_store, agent_token, metrics_store, deploy, cred_store))
+    server = ThreadingHTTPServer((args.bind, args.http_port), make_handler(broker, page_config, smart_store, agent_token, metrics_store, deploy, cred_store,
+                                                                         honeypot_store))
     server.daemon_threads = True
     log.info("dashboard at http://%s:%d/  (mode: %s)", socket.gethostname(), args.http_port, page_config["mode"])
     server.serve_forever()

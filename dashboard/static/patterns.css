@@ -1,0 +1,59 @@
+/* ---------- attack patterns screen ---------- */
+#patterns { height: 100%; padding: 22px 28px 56px; display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 560px; grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "head head" "table spot" "bottom bottom"; }
+#patterns > .smart-head { grid-area: head; }
+#patterns .ppanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; min-height: 0; overflow: hidden; }
+#patterns h2, #patterns h4 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+#patterns h4 { margin: 12px 0 6px; }
+#patterns .none { color: var(--muted); font-size: 12px; }
+#patterns .dim { color: var(--muted); }
+
+#patTable { grid-area: table; padding: 0; }
+#patTable table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#patTable th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  padding: 10px 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+#patTable th.n, #patTable td.n { text-align: right; font-family: var(--mono); }
+#patTable td { padding: 6px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.03); vertical-align: middle; white-space: nowrap; }
+#patTable td.rk { color: var(--muted); font-family: var(--mono); width: 26px; }
+#patTable td.lbl { white-space: normal; min-width: 220px; }
+#patTable td.lbl b { font-weight: 600; }
+#patTable .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+#patTable .peek { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; align-self: center; }
+#patTable tr.on td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+#patTable tr.on td.rk { color: var(--accent); }
+#patTable .chip { font-size: 10.5px; padding: 1px 7px; }
+.spark { width: 84px; height: 18px; display: block; }
+.spark rect { fill: var(--accent); opacity: 0.45; }
+.spark rect.today { opacity: 1; }
+
+#patSpot { grid-area: spot; display: flex; flex-direction: column; }
+#patSpot .spot-head { display: flex; justify-content: space-between; align-items: baseline; }
+#patSpot .fp { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+#patSpot h3 { margin: 2px 0 6px; font-size: 18px; font-weight: 600; }
+#patSpot .tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+#patSpot .chip { font-size: 10.5px; padding: 1px 7px; }
+#patSpot .sum { margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; }
+#patSpot .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+#patSpot .facts div { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; }
+#patSpot .facts .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+#patSpot .facts .v { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+#patSpot pre { margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+  background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 13.5em; overflow: hidden; }
+#patSpot .ps { color: var(--accent); }
+#patSpot .cols { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px; }
+#patSpot .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; }
+#patSpot .row code { font-family: var(--mono); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#patSpot .row code.bad { color: var(--crit); }
+#patSpot .row span:last-child { font-family: var(--mono); color: var(--muted); }
+
+#patBottom { grid-area: bottom; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+#patNew { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+#patNew li { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+#patNew .when { font-family: var(--mono); font-size: 11px; color: var(--warn); }
+#patNew .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#patNew .lbl .tags { display: inline-flex; gap: 3px; margin-left: 6px; }
+#patNew .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+#patUnrec .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#patUnrec code { font-family: var(--mono); font-size: 11px; }
+#patUnrec li { gap: 8px; }

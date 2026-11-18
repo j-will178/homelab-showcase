@@ -21,10 +21,33 @@ HERE = Path(__file__).resolve().parent
 DASHBOARD = HERE.parent
 sys.path.insert(0, str(DASHBOARD))
 
+import honeypot  # noqa: E402
 import metrics  # noqa: E402
 import smart    # noqa: E402
 
 ORDER = ["opnsense", "optiplex-management", "homeshare", "backup-compute"]
+
+
+def honeypot_stream(sim, now, minutes=20):
+    """The next `minutes` of simulated honeypot events, as feed rows with an offset in seconds;
+    demo-api.js plays them (looping) so the honeypot screen's feed keeps moving."""
+    rows, t = [], now
+    while t < now + minutes * 60:
+        t += sim.rng.expovariate(sim.rate / 3600)
+        lines, geo = sim.session_lines(t)
+        proto = None
+        for tt, line in lines:
+            ev = honeypot.parse_cowrie(line)
+            if not ev:
+                continue
+            proto = ev.get("protocol", proto)
+            k = ev["kind"]
+            text = (f'{ev["username"]} / {ev["password"]}' if k.startswith("login") else ev.get("input") or ev.get("url")
+                    or ev.get("version") or (f'{round(ev["duration"])} s' if k == "closed" else ev.get("protocol", "")))
+            rows.append({"offset_s": round(tt - now, 1), "kind": k, "ip": ev["ip"], "text": text[:160], "protocol": proto,
+                         "cc": geo.get("cc"), "city": geo.get("city"), "country": geo.get("country")})
+    rows.sort(key=lambda r: r["offset_s"])
+    return {"period_s": minutes * 60, "rows": rows}
 
 
 def snapshot():
@@ -38,8 +61,15 @@ def snapshot():
     deploy["request"] = None
     for h in deploy["hosts"]:       # start idle; "Deploy all" in the demo plays a rollout
         h["running_for_s"], h["phase"] = None, None
+    hp = honeypot.HoneypotStore(source="simulated", db=honeypot.HoneypotDB(":memory:"))
+    sim = honeypot.Simulator(hp, seed=2026, now=now)
+    sim.backfill(now=now)
+    sim.backfill_history(now=now)
     return {
         "built_at": int(now),
+        "honeypot": hp.view(now=now),
+        "honeypot_patterns": hp.patterns_view(now=now),
+        "honeypot_stream": honeypot_stream(sim, now),
         "smart": smart_store.view(now=now),
         "metrics": store.view(now=now),
         "tasks": store.tasks_view(now=now),
