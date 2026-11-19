@@ -15,6 +15,7 @@ control characters, unknown event ids are ignored, and the page escapes everythi
 """
 
 import json
+import os
 import random
 import re
 import sqlite3
@@ -150,6 +151,12 @@ class HoneypotDB:
                 json.dumps(s["commands"]), json.dumps(s["downloads"])))
             self._commit()
 
+    def events_since(self, t):
+        """Stored events from t on, oldest first, in parse_cowrie's shape (for a restart)."""
+        with self.lock:
+            rows = self.db.execute("SELECT t, session, kind, data FROM events WHERE t >= ? ORDER BY t, rowid", (t,)).fetchall()
+        return [dict(json.loads(d), t=tt, session=ss, kind=k) for tt, ss, k, d in rows]
+
     def purge(self, now=None):
         cutoff = (now or time.time()) - self.retention
         with self.lock:
@@ -250,7 +257,12 @@ class HoneypotStore:
             self.add(ev)
         return ev is not None
 
-    def add(self, ev, where=None):
+    def replay(self, events):
+        """Rebuild the in-memory window from stored events after a restart (nothing re-written)."""
+        for ev in events:
+            self.add(ev, persist=False)
+
+    def add(self, ev, where=None, persist=True):
         """ev from parse_cowrie(); where = geo dict (lat, lon, city, cc, country) if already known."""
         with self.lock:
             s = self.sessions.get(ev["session"])
@@ -279,7 +291,7 @@ class HoneypotStore:
             elif k == "closed":
                 s["end"], s["duration"] = ev["t"], ev["duration"]
             self.events.append(ev)
-            if self.db:
+            if self.db and persist:
                 self.db.add_event(ev)
                 if k == "closed":
                     self.db.add_session(s)
@@ -505,6 +517,7 @@ class Simulator:
                  [now - self.rng.uniform(1, 20) * 3600 for _ in range(3)] + [now + h * 3600 for h in (2, 7, 15, 30)]
         self.rare = [(b, self.rng.sample(POOL, self.rng.randint(3, 6))) for b in births]
         self.attackers = {}   # recurring sources keep their IP + location
+        self.stopped = threading.Event()   # set when the real honeypot takes over
 
     def _ts(self, t):
         return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -631,16 +644,113 @@ class Simulator:
 
     def run_forever(self):
         """Live: start sessions at random intervals; each plays out over its real duration."""
-        while True:
-            time.sleep(self.rng.expovariate(self.rate / 3600))
+        while not self.stopped.wait(self.rng.expovariate(self.rate / 3600)):
             lines, geo = self.session_lines(time.time())
             threading.Thread(target=self._play, args=(lines, geo), daemon=True).start()
 
     def _play(self, lines, geo):
         for i, (t, line) in enumerate(lines):
             delay = t - time.time()
-            if delay > 0:
-                time.sleep(delay)
+            if delay > 0 and self.stopped.wait(delay):
+                return
+            if self.stopped.is_set():
+                return
             ev = parse_cowrie(line)
             if ev:
                 self.store.add(ev, where=geo if i == 0 else None)
+
+
+class HoneypotFeed:
+    """What the Honeypot and Attack patterns screens show: simulated data until the first real
+    Cowrie events arrive from cloud-ops (POST /api/honeypot/ingest), then the real feed, kept in
+    SQLite at db_path. Once that file exists the dashboard starts in real mode, so it switches
+    exactly once and simulated data never reaches the disk. Also holds the latest status of the
+    lab side (puller + rebuilds) for the status line."""
+
+    MAX_LINES = 20000
+    STATUS_KEYS = ("state", "error", "pulled_at", "exposure", "honeypot_image", "last_rebuild_at", "last_apply_at",
+                   "rebuild_result", "rebuild_error", "running")
+
+    def __init__(self, db_path=None, geo=None, simulate=True):
+        self.db_path, self.geo = db_path, geo
+        self.lock = threading.Lock()
+        self.status, self.status_at = None, None
+        self.seen = OrderedDict()           # batch ids already ingested (a retried post isn't counted twice)
+        self.sim = None
+        if db_path and os.path.exists(db_path):
+            self.store = self._real()
+        elif simulate:
+            self.store = HoneypotStore(source="simulated", db=HoneypotDB(":memory:"))
+            self.sim = Simulator(self.store)
+            self.sim.backfill()
+        else:
+            self.store = HoneypotStore(source="waiting")
+
+    def _real(self):
+        db = HoneypotDB(self.db_path)
+        store = HoneypotStore(source="cowrie", geo=self.geo, db=db)
+        store.replay(db.events_since(time.time() - store.window))
+        return store
+
+    def start_background(self):
+        """Simulator history + live sessions (simulated only), and the hourly 30-day purge."""
+        def run():
+            if self.sim:
+                self.sim.backfill_history()
+                if not self.sim.stopped.is_set():
+                    threading.Thread(target=self.sim.run_forever, daemon=True).start()
+            while True:
+                time.sleep(3600)
+                if self.store.db:
+                    self.store.db.purge()
+        threading.Thread(target=run, daemon=True).start()
+
+    @property
+    def live(self):
+        return self.store.source == "cowrie"
+
+    def ingest(self, body, now=None):
+        """body: {"id": "...", "lines": [Cowrie JSON lines], "status": {...}}. Lines are attacker-
+        controlled: parse_cowrie() treats them as hostile, nothing is executed or rendered as HTML."""
+        if not isinstance(body, dict):
+            raise ValueError("expected a JSON object")
+        lines, bid, st = body.get("lines") or [], body.get("id"), body.get("status")
+        if not isinstance(lines, list) or len(lines) > self.MAX_LINES or not all(isinstance(x, str) for x in lines):
+            raise ValueError(f"lines must be a list of at most {self.MAX_LINES} strings")
+        if bid is not None and (not isinstance(bid, str) or len(bid) > 200):
+            raise ValueError("bad id")
+        with self.lock:
+            if isinstance(st, dict):
+                self.status = {k: st.get(k) for k in self.STATUS_KEYS if isinstance(st.get(k), (str, int, float, type(None)))}
+                self.status_at = now or time.time()
+            if not lines:
+                return {"accepted": 0}
+            if bid and bid in self.seen:
+                return {"accepted": 0, "duplicate": True}
+            if not self.live:
+                if not self.db_path:
+                    raise ValueError("this dashboard has no state directory: real honeypot data is disabled")
+                if self.sim:
+                    self.sim.stopped.set()
+                self.store = self._real()   # first real events: switch for good
+            if bid:
+                self.seen[bid] = True
+                while len(self.seen) > 5000:
+                    self.seen.popitem(last=False)
+            store = self.store
+        n = 0
+        for line in lines:
+            n += store.add_line(line)
+        return {"accepted": n, "ignored": len(lines) - n}
+
+    def _feed_status(self, now):
+        if not self.status:
+            return None
+        return dict(self.status, age_s=round(now - self.status_at))
+
+    def view(self, now=None):
+        now = now or time.time()
+        return dict(self.store.view(now), feed_status=self._feed_status(now))
+
+    def patterns_view(self, now=None):
+        return dict(self.store.patterns_view(now), feed_status=self._feed_status(now or time.time()))

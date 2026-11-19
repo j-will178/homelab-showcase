@@ -1,0 +1,46 @@
+#!/bin/bash
+# hc-install PRODUCT VERSION FINGERPRINT: install a HashiCorp binary (terraform, packer) to
+# /usr/local/bin, verified end to end:
+#   1. HashiCorp's public key, downloaded now, must have FINGERPRINT (pinned in git). Fetching it
+#      each time picks up expiry extensions; a different key fails closed.
+#   2. SHA256SUMS must carry a valid signature by that key.
+#   3. The zip must match its line in SHA256SUMS.
+# Does nothing if that version is already installed.
+set -euo pipefail
+product="$1" version="$2" fpr="${3^^}"
+[[ "$product" =~ ^(terraform|packer)$ ]] || { echo "hc-install: unknown product '$product'" >&2; exit 2; }
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "hc-install: bad version '$version'" >&2; exit 2; }
+[[ "$fpr" =~ ^[0-9A-F]{40}$ ]] || { echo "hc-install: bad fingerprint" >&2; exit 2; }
+
+bin="${HC_BIN_DIR:-/usr/local/bin}/$product"
+if [[ -x "$bin" ]] && "$bin" version 2>/dev/null | head -1 | grep -qE "^(Terraform |Packer )?v?${version//./\\.}\$"; then
+  exit 0
+fi
+
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+export GNUPGHOME="$tmp/gnupg"; install -d -m 700 "$GNUPGHOME"
+base="https://releases.hashicorp.com/$product/$version"
+sums="${product}_${version}_SHA256SUMS"
+zip="${product}_${version}_linux_amd64.zip"
+get() { curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$tmp/$2" "$1"; }
+
+get https://www.hashicorp.com/.well-known/pgp-key.txt key.asc
+gpg --batch --quiet --import "$tmp/key.asc" 2>/dev/null
+have="$(gpg --batch --with-colons --fingerprint 2>/dev/null | awk -F: '$1=="pub"{p=1;next} p&&$1=="fpr"{print $10; p=0}')"
+grep -qx "$fpr" <<<"$have" || { echo "hc-install: HashiCorp's key no longer has the pinned fingerprint (got: ${have//$'\n'/ }). Check hashicorp.com/security and update cloud-ops/tools.env." >&2; exit 1; }
+
+get "$base/$sums" "$sums"
+get "$base/$sums.sig" "$sums.sig"
+status="$(gpg --batch --status-fd 1 --verify "$tmp/$sums.sig" "$tmp/$sums" 2>/dev/null || true)"
+# VALIDSIG <signing (sub)key fpr> ... <primary key fpr>: the primary must be the pinned one.
+grep -qE "^\[GNUPG:\] VALIDSIG [0-9A-F]{40} .* $fpr\$" <<<"$status" \
+  || { echo "hc-install: $sums is not signed by the pinned HashiCorp key: NOT installing" >&2; exit 1; }
+
+get "$base/$zip" "$zip"
+line="$(grep -E "  $zip\$" "$tmp/$sums")" || { echo "hc-install: $zip not listed in $sums" >&2; exit 1; }
+(cd "$tmp" && sha256sum --quiet -c - <<<"$line") || { echo "hc-install: $zip checksum mismatch: NOT installing" >&2; exit 1; }
+
+unzip -q -o "$tmp/$zip" "$product" -d "$tmp/out"
+install -m 0755 "$tmp/out/$product" "$bin.new"
+mv -f "$bin.new" "$bin"
+echo "hc-install: $product $version installed (signature and checksum verified)"

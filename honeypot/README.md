@@ -2,7 +2,7 @@
 
 A disposable Cowrie honeypot in the cloud, reached only through a bastion, with no outbound access. Its logs feed the dashboard's **Honeypot** and **Attack patterns** screens (simulated until this is running).
 
-> **Status:** code only. Nothing has been created on DigitalOcean yet. It will start **lab-only** (`exposure`): Cowrie reachable from the home IP only, until the checklist below passes. The next PR adds the lab side: pinned Terraform/Packer on [cloud-ops](../cloud-ops/), the weekly rebuild, and the log puller.
+> **Status:** ready, not created yet: nothing exists on DigitalOcean until the one-time `hp-secrets` step. It will start **lab-only** (`exposure`): Cowrie reachable from the home IP only, until the checklist below passes. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
 
 ```mermaid
 flowchart LR
@@ -63,7 +63,7 @@ Going live, or back, is a **one-line PR** changing that default, applied by the 
 |---|---|---|
 | 1 | From the laptop, `ssh root@<honeypot>` on 22: two wrong passwords, then any other password; run `uname -a`, a `wget`, an `echo … >> .ssh/authorized_keys` | `123456`/`root` refused, others accepted, fake shell works |
 | 2 | On the honeypot (as `hpadmin` through the bastion): `tail -f /var/lib/cowrie/log/cowrie.json` | each event within a second |
-| 3 | On optiplex: `ssh hp-honeypot read` | the same lines (proves jump user, forced command, pinned host keys) |
+| 3 | On cloud-ops: `sudo hp-pull ssh hp-honeypot read` | the same lines (proves jump user, forced command, pinned host keys) |
 | 4 | Dashboard, Honeypot screen | "simulated" label gone; the session, its summary and tags, the blocked download, within about one pull interval. Note the delay |
 | 5 | From **outside** the home network (phone hotspot): honeypot 22, 23, 47022 and bastion 2222 | all **time out** (dropped by the cloud firewall), none refused |
 | 6 | On the honeypot as `hpadmin`: `curl https://example.com`, then `journalctl -k \| grep hp-drop-out` | curl fails; the drop is logged. The `wget` from step 1 is a failed download in Cowrie's log |
@@ -71,24 +71,23 @@ Going live, or back, is a **one-line PR** changing that default, applied by the 
 
 **Go-live PR:** `exposure = "public"`, plus a one-time reset of the dashboard's honeypot history, so the test sessions (and the home IP on the map) don't stay in the 30-day data.
 
-## How a rebuild works (automated in the next PR)
+## How a rebuild works
 
-```bash
-export DIGITALOCEAN_TOKEN=...                    # optiplex only
-cd packer && packer init . && packer build -var region=nyc3 .     # -> manifest.json: hp-honeypot-<stamp>
-ssh-keygen -t ed25519 -N "" -f /tmp/hp-hostkey    # new honeypot identity
-cd ../terraform && terraform init && terraform apply \
-  -var 'home_cidrs=["<current public IP>/32"]' -var honeypot_image=hp-honeypot-<stamp> \
-  -var "honeypot_host_key={private=\"$(cat /tmp/hp-hostkey)\",public=\"$(cat /tmp/hp-hostkey.pub)\"}" ...
-```
+Automated on cloud-ops by [`hp-rebuild`](../cloud-ops/honeypot/hp-rebuild) (weekly, plus a daily `--refresh`):
 
-Terraform replaces only the honeypot (new image) and updates the firewall rule if the home IP changed. The new honeypot is up before the old one is destroyed. Old snapshots are deleted after a successful apply.
+1. Looks up the home IP (two services must agree) and stages this folder's code into `/var/lib/honeypot`.
+2. `terraform apply` of the `hp-build` tag and firewall first, so Packer's build droplet is covered from boot.
+3. `packer build`: snapshot `hp-honeypot-<stamp>`.
+4. A new honeypot host key, then `terraform apply`: only the honeypot is replaced (new image, new key), and the firewalls follow the home IP. The new honeypot is up before the old one is destroyed.
+5. Publishes the addresses and pinned host keys for the puller, deletes snapshots older than the last two.
+
+`--refresh` skips 2–4's image and key steps: just `terraform apply` with the current image.
 
 ## First-time setup (once)
 
 1. **DigitalOcean account:** 2FA on, recovery codes in Bitwarden. The support ticket confirming a no-egress honeypot is fine is already done; keep the reply.
-2. **API token:** a custom-scoped token, stored only on cloud-ops (one-time secret, like the backup keys). It needs create/read/update/delete for droplets, firewalls, VPCs, reserved IPs, SSH keys, tags and snapshots/images, plus the read access the provider needs (regions, sizes, actions). Give it an expiry and put a renewal reminder in Bitwarden.
-3. **Keys:** the lab key is generated on optiplex. Your admin key (`hpadmin`) is your own public key.
+2. **API token:** a custom-scoped token, stored only on cloud-ops by `sudo hp-secrets` (one-time secret, like the backup keys). It needs create/read/update/delete for droplets, firewalls, VPCs, reserved IPs, SSH keys, tags and snapshots/images, plus the read access the provider needs (regions, sizes, actions). Give it an expiry and put a renewal reminder in Bitwarden.
+3. **Keys:** the lab key is generated on cloud-ops. Your admin key (`hpadmin`) is your own public key, given to `hp-secrets`.
 
 ## Updating Cowrie
 
@@ -113,4 +112,4 @@ About $10–11/month: bastion `s-1vcpu-512mb-10gb` (~$4), honeypot `s-1vcpu-1gb`
   - `sshd -t`/`-T` on both sshd configs, with the effective settings for `collector` and `jump` checked;
   - both cloud-init templates rendered and parsed as YAML;
   - HCL parsed.
-- Not yet run: `terraform validate`/`plan` and `packer validate`. HashiCorp's download servers aren't reachable from where this was written, so they run on cloud-ops in the next PR, before anything is created.
+- Not yet run against the real tools: `hp-rebuild` runs `terraform validate` and `packer validate` on cloud-ops before every build, so a problem there stops the first build before anything is created.

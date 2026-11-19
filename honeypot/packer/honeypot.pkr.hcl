@@ -10,7 +10,8 @@ packer {
   required_plugins {
     digitalocean = {
       source  = "github.com/digitalocean/digitalocean"
-      version = ">= 1.3.1"
+      # Exact version: Packer has no lock file, so a range would pick up new releases unreviewed.
+      version = "= 1.4.1"
     }
   }
 }
@@ -64,5 +65,8 @@ build {
   post-processor "manifest" {
     output     = "manifest.json"
     strip_path = true
+    custom_data = {
+      snapshot_name = "hp-honeypot-${local.stamp}"   # read by cloud-ops/honeypot/hp-rebuild
+    }
   }
 }

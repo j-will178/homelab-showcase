@@ -95,7 +95,7 @@ apply() {
   if [[ "$ROLE" == "dashboard" ]] && touches "$changed" "dashboard/"; then
     run_step dashboard "$changed" || failed=1
   fi
-  if [[ "$ROLE" == "cloud-ops" ]] && { touches "$changed" "cloud-ops/" || touches "$changed" "dashboard/agents/metrics_agent.py"; }; then
+  if [[ "$ROLE" == "cloud-ops" ]] && { touches "$changed" "cloud-ops/" || touches "$changed" "honeypot/" || touches "$changed" "dashboard/agents/metrics_agent.py"; }; then
     run_step cloudops "$changed" || failed=1
   fi
 
@@ -350,6 +350,17 @@ rollback_dashboard() {
 
 # ---- cloud-ops (the VM on backup-compute; see cloud-ops/README.md) ----------
 CO_SRC_FILES=(rack-metrics-agent.service nftables.conf 50-cloud-ops-sshd.conf 20auto-upgrades 52unattended-reboot)
+# Honeypot operations (cloud-ops/honeypot/): file -> "destination mode"
+declare -A HP_DEST=(
+  [hp-pull]="/usr/local/bin/hp-pull 0755"
+  [hp-rebuild]="/usr/local/sbin/hp-rebuild 0755"
+  [hp-secrets]="/usr/local/sbin/hp-secrets 0755"
+  [hp-pull.service]="/etc/systemd/system/hp-pull.service 0644"
+  [hp-rebuild.service]="/etc/systemd/system/hp-rebuild.service 0644"
+  [hp-rebuild.timer]="/etc/systemd/system/hp-rebuild.timer 0644"
+  [hp-refresh.service]="/etc/systemd/system/hp-refresh.service 0644"
+  [hp-refresh.timer]="/etc/systemd/system/hp-refresh.timer 0644"
+)
 CO_AGENT="/opt/rack-agent/metrics_agent.py"
 CO_TOKEN="/etc/rack-agent/token"
 declare -A CO_DEST=(
@@ -368,12 +379,17 @@ deploy_cloudops() {
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$REPO_DIR/dashboard/agents/metrics_agent.py" \
     || { log "cloud-ops: metrics_agent.py has a syntax error, not deploying"; return 1; }
   [[ -s "$CO_TOKEN" ]] || { log "cloud-ops: $CO_TOKEN missing (one-time setup step, see cloud-ops/README.md)"; return 1; }
-  for p in nftables unattended-upgrades; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
+  for p in nftables unattended-upgrades gnupg unzip rsync; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
   if (( ${#missing[@]} )); then
     log "cloud-ops: installing ${missing[*]}"
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q "${missing[@]}" >/dev/null || return 1
   fi
   nft -c -f "$src/nftables.conf" || { log "cloud-ops: nftables.conf invalid, not deploying"; return 1; }
+  python3 -m py_compile "$REPO_DIR/cloud-ops/honeypot/hp-pull" 2>/dev/null \
+    || { log "cloud-ops: hp-pull has a syntax error, not deploying"; return 1; }
+  for f in hp-rebuild hp-secrets; do
+    bash -n "$REPO_DIR/cloud-ops/honeypot/$f" || { log "cloud-ops: $f has a syntax error, not deploying"; return 1; }
+  done
 
   # 2. Snapshot what's live now (for rollback), then install.
   mkdir -p "$prev" || return 1
@@ -382,6 +398,10 @@ deploy_cloudops() {
     [[ -f "$dst" ]] && { cp -p "$dst" "$prev/$f" || return 1; }
   done
   [[ -f "$CO_AGENT" ]] && { cp -p "$CO_AGENT" "$prev/metrics_agent.py" || return 1; }
+  for f in "${!HP_DEST[@]}"; do
+    dst="${HP_DEST[$f]% *}"
+    [[ -f "$dst" ]] && { cp -p "$dst" "$prev/hp.$f" || return 1; }
+  done
   touch "$prev/.snapshot-complete"
 
   install -d -m 0755 /opt/rack-agent || return 1
@@ -401,7 +421,41 @@ deploy_cloudops() {
   systemctl restart rack-metrics-agent.service || return 1
   sleep 3
   systemctl is-active --quiet rack-metrics-agent.service || { log "cloud-ops: metrics agent not running"; return 1; }
+
+  # 4. Honeypot operations: verified HashiCorp tools, the lab key, puller and rebuild timers.
+  deploy_cloudops_honeypot "$1" || return 1
   log "cloud-ops: healthy"
+}
+
+deploy_cloudops_honeypot() {
+  local changed="$1" f dst mode
+  # shellcheck source=/dev/null
+  ( source "$REPO_DIR/cloud-ops/tools.env" &&
+    install -m 0755 "$REPO_DIR/cloud-ops/files/hc-install" /usr/local/sbin/hc-install &&
+    hc-install terraform "$TERRAFORM_VERSION" "$HASHICORP_FINGERPRINT" &&
+    hc-install packer "$PACKER_VERSION" "$HASHICORP_FINGERPRINT" ) \
+    || { log "cloud-ops: installing Terraform/Packer failed (verification or download)"; return 1; }
+  install -d -m 0700 /etc/honeypot || return 1
+  # The lab key (cloud-ops -> bastion -> honeypot) exists from the start, so the puller can start.
+  [[ -f /etc/honeypot/lab_ed25519 ]] || ssh-keygen -q -t ed25519 -N "" -C cloud-ops-honeypot-lab -f /etc/honeypot/lab_ed25519 || return 1
+  for f in "${!HP_DEST[@]}"; do
+    dst="${HP_DEST[$f]% *}"; mode="${HP_DEST[$f]#* }"
+    install -m "$mode" "$REPO_DIR/cloud-ops/honeypot/$f" "$dst" || return 1
+  done
+  systemctl daemon-reload || return 1
+  systemctl enable --quiet --now hp-rebuild.timer hp-refresh.timer || return 1
+  systemctl enable --quiet hp-pull.service || return 1
+  systemctl restart hp-pull.service || return 1
+  sleep 2
+  systemctl is-active --quiet hp-pull.service || { log "cloud-ops: hp-pull not running"; return 1; }
+  # Infrastructure changes in git reach DigitalOcean now, not at the next timer (once set up).
+  if [[ -s /etc/honeypot/do_token ]]; then
+    if touches "$changed" "honeypot/packer/"; then
+      log "cloud-ops: honeypot image changed: starting a rebuild"; systemctl start --no-block hp-rebuild.service
+    elif touches "$changed" "honeypot/terraform/"; then
+      log "cloud-ops: honeypot infrastructure changed: starting terraform apply"; systemctl start --no-block hp-refresh.service
+    fi
+  fi
 }
 
 rollback_cloudops() {
@@ -412,10 +466,16 @@ rollback_cloudops() {
     else rm -f "${CO_DEST[$f]}"; fi
   done
   [[ -f "$prev/metrics_agent.py" ]] && install -m 0644 "$prev/metrics_agent.py" "$CO_AGENT"
+  for f in "${!HP_DEST[@]}"; do
+    if [[ -f "$prev/hp.$f" ]]; then install -m "${HP_DEST[$f]#* }" "$prev/hp.$f" "${HP_DEST[$f]% *}"
+    else rm -f "${HP_DEST[$f]% *}"; fi
+  done
   systemctl daemon-reload
   sshd -t && systemctl reload ssh
   [[ -f /etc/nftables.conf ]] && systemctl restart nftables.service
   systemctl restart rack-metrics-agent.service 2>/dev/null || true
+  if [[ -f /etc/systemd/system/hp-pull.service ]]; then systemctl restart hp-pull.service 2>/dev/null || true
+  else systemctl disable --now hp-pull.service hp-rebuild.timer hp-refresh.timer 2>/dev/null || true; fi
   log "cloud-ops: rolled back"
 }
 

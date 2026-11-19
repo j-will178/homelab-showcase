@@ -16,7 +16,7 @@ All hosts are in the `home.arpa` DNS domain (served by OPNsense), e.g. `opnsense
 | `optiplex-management` | Dell OptiPlex 7060 mini | Debian | WireGuard jump host, rack dashboard, auto-deploy |
 | `homeshare` | Supermicro X10SLL-F · i3-4160 · 16 GB | Windows | Main file share (**Main** pool, SSD) + SAS archive (**Archive** pool) |
 | `backup-compute` | Supermicro X9DR3-F · 2× E5-2660 v2 · 64 GB | Windows | Mirror of the Main pool (**Backup** pool, SSD), Jellyfin, Folding@home, Hyper-V host for `cloud-ops` |
-| `cloud-ops` | Hyper-V VM on backup-compute · 1 vCPU · 2 GB RAM · 25 GB disk | Debian 13 | Cloud and honeypot operations (DigitalOcean token, Terraform/Packer, honeypot log puller; tooling arrives in a later PR). Built from [`vms/`](../vms/) |
+| `cloud-ops` | Hyper-V VM on backup-compute · 1 vCPU · 2 GB RAM · 25 GB disk | Debian 13 | Cloud and honeypot operations: DigitalOcean token, Terraform state, Packer, weekly honeypot rebuild, honeypot log puller. Built from [`vms/`](../vms/) |
 
 ## Network
 
@@ -79,14 +79,14 @@ Notes:
 - Agents on every machine push **compute metrics every 10 seconds** and **drive health (SMART) every 15 min** to optiplex-management (token-authenticated). It still only connects out to the servers over RDP.
 - Backup share credential: homeshare publishes a public key and backup-compute posts the `svc-backup` password encrypted to it via `/api/creds` on the dashboard (agent token; the dashboard never sees the password).
 - **Deploy all** (`POST /api/deploy`, button on the Deployments screen) travels back to the hosts in the replies to those metrics posts; each host then pulls `main` itself. No inbound connections to the hosts are added.
-- cloud-ops is a Hyper-V VM on backup-compute, bridged to the LAN through the virtual switch `LAN` (DHCP reservation for MAC `02:4C:41:42:00:01`). It is built from git by backup-compute's agent (see [`vms/`](../vms/)) and deploys itself like optiplex-management (`homelab-deploy`, role `cloud-ops`). Its nftables firewall allows SSH in from the LAN only; out: DNS, DHCP, NTP, HTTP(S), SSH to GitHub, TCP 2222 (honeypot bastion, later) and TCP 8080 to the dashboard. On first boot it posts its public deploy key to the dashboard (`/api/deploykeys`, agent token) until it's added on GitHub.
+- cloud-ops is a Hyper-V VM on backup-compute, bridged to the LAN through the virtual switch `LAN` (DHCP reservation for MAC `02:4C:41:42:00:01`). It is built from git by backup-compute's agent (see [`vms/`](../vms/)) and deploys itself like optiplex-management (`homelab-deploy`, role `cloud-ops`). Its nftables firewall allows SSH in from the LAN only; out: DNS, DHCP, NTP, HTTP(S) (Debian, DigitalOcean API, HashiCorp releases, GitHub), SSH (GitHub; Packer's build droplet), TCP 2222 (honeypot bastion) and TCP 8080 to the dashboard. On first boot it posts its public deploy key to the dashboard (`/api/deploykeys`, agent token) until it's added on GitHub.
 - opnsense, homeshare and backup-compute update their agents themselves: before each run they pull `main` over SSH (TCP 22) with a per-machine **read-only** deploy key. Outbound only. Nothing pushes to them.
 
 ## Services
 
 | Host | Service | Port | Deployed by |
 |---|---|---|---|
-| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated data for now; 30 days of honeypot history in SQLite once real); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN) | `homelab-deploy.timer` |
+| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated until cloud-ops posts the first real events, then real for good: 30 days in `honeypot.db`); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN) | `homelab-deploy.timer` |
 | optiplex-management | `rack-metrics-agent.service` (10 s loop) + `rack-smart-agent.timer` (15 min) | → 127.0.0.1:8080 | `homelab-deploy.timer` |
 | homeshare, backup-compute | Scheduled task *Rack Dashboard SMART agent* (`Invoke-RackAgent.ps1`, every minute: keeps task *Rack Dashboard metrics* running, a 10 s loop; every 15 min: update + SMART) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `Install-SmartAgent.ps1 -AutoUpdate`) |
 | OPNsense | configd action `rackagent smart-push` (`run.sh`) + GUI cron **every minute** (keeps the 10 s metrics loop running under `daemon -r`; update + SMART every 15 min) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `install-opnsense.sh`) |
@@ -96,6 +96,8 @@ Notes:
 | backup-compute | Hyper-V VM `cloud-ops` (created by `Sync-HyperV.ps1`, run by the agent; never changed or deleted automatically) | — | `vms/vms.json` (one-time: Hyper-V + switch `LAN`) |
 | cloud-ops | `rack-metrics-agent.service` (10 s loop), nftables, unattended-upgrades (reboot 04:45 if needed) | → optiplex-management:8080 | `homelab-deploy.timer` (role `cloud-ops`) |
 | cloud-ops | `homelab-deploy.timer` (first set up by `homelab-bootstrap` on first boot) | outbound SSH to GitHub | `vms/cloud-ops.user-data` |
+| cloud-ops | `hp-pull.service` (honeypot log puller, unprivileged DynamicUser, every 30 s) | → bastion:2222 → honeypot:47022 (SSH), → optiplex-management:8080 `/api/honeypot/ingest` | `homelab-deploy.timer` |
+| cloud-ops | `hp-rebuild.timer` (weekly: Packer image + `terraform apply`), `hp-refresh.timer` (daily `terraform apply`); Terraform + Packer, signature-verified | → api.digitalocean.com:443, → releases.hashicorp.com / registry.terraform.io / GitHub:443, → Packer build droplet:22 | `homelab-deploy.timer` (one-time: `sudo hp-secrets`) |
 
 ## Data and backups
 
@@ -143,7 +145,7 @@ Planned:
 ## Open items
 
 - [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
-- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), not deployed): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs pulled by cloud-ops into the dashboard's Honeypot screen (simulated data until then). Planned network paths once deployed:
+- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), lab side running on cloud-ops; **droplets created after the one-time `sudo hp-secrets`**, starting lab-only): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs pulled by cloud-ops into the dashboard's Honeypot screen (simulated data until then). Network paths once created:
 
   | From | To | Port | Allowed by |
   |---|---|---|---|
@@ -151,6 +153,7 @@ Planned:
   | bastion | honeypot | TCP 47022 | honeypot cloud firewall (bastion tag only) |
   | internet (home IP only while `exposure = "lab-only"`) | honeypot | TCP 22, 23 (Cowrie) | honeypot cloud firewall |
   | honeypot | anywhere | none | no outbound rules |
+  | cloud-ops (home IP) | Packer build droplet (during a weekly build only) | TCP 22 | `hp-build` cloud firewall (home IP only) |
 - [ ] UPS graceful shutdown
 - [ ] Managed switch + VLANs
 - [ ] GPU for Jellyfin transcoding / local AI (homeshare or a separate box)

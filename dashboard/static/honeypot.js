@@ -9,6 +9,26 @@
   const ACTIVE_MS = 3000, IDLE_MS = 30000;
   let data = null, fetchedAt = 0, active = false, world = null, projection = null, timer = null, dotScale = 1;
 
+  // The lab side (cloud-ops: log puller + weekly rebuild), from the puller's last post.
+  function feedChips(f) {
+    if (!f) return '';
+    const age = f.age_s + since();
+    if (age > 180) return `<span class="chip lv-crit">cloud-ops not reporting · ${ago(age)} ago</span>`;
+    const out = [];
+    const msg = { 'waiting-secrets': 'honeypot: one-time secrets not set up (sudo hp-secrets on cloud-ops)',
+                  'waiting-build': 'honeypot: waiting for its first build' };
+    if (msg[f.state]) out.push(`<span class="chip lv-unknown">${esc(msg[f.state])}</span>`);
+    else if (f.state === 'error') out.push(`<span class="chip lv-crit" title="${esc(f.error || '')}">pull failing: ${esc((f.error || '').slice(0, 60))}</span>`);
+    else if (f.pulled_at) out.push(`<span class="chip">pulled ${ago(Math.max(0, Date.now() / 1000 - f.pulled_at))} ago</span>`);
+    if (f.exposure) out.push(f.exposure === 'public' ? '<span class="chip lv-ok">public</span>'
+                                                      : '<span class="chip lv-warn">lab-only: reachable from home only</span>');
+    if (f.running) out.push(`<span class="chip lv-warn">${f.running === 'full' ? 'rebuilding' : 'applying'}…</span>`);
+    else if (f.rebuild_result === 'failed') out.push(`<span class="chip lv-crit" title="${esc(f.rebuild_error || '')}">last rebuild failed</span>`);
+    if (f.honeypot_image) out.push(`<span class="chip">${esc(f.honeypot_image.replace('hp-honeypot-', 'image '))}` +
+      (f.last_rebuild_at ? ` · rebuilt ${ago(Math.max(0, Date.now() / 1000 - f.last_rebuild_at))} ago` : '') + '</span>');
+    return out.join('');
+  }
+
   function ago(s) {
     if (typeof s !== 'number') return '—';
     if (s < 60) return `${Math.max(0, Math.round(s))}s`;
@@ -148,8 +168,10 @@
 
     const sim = data.simulated;
     const lastAge = data.last_event_age_s != null ? data.last_event_age_s + since() : null;
-    $('hpSummary').innerHTML = (sim ? '<span class="chip lv-warn">simulated data</span>' : '<span class="chip lv-ok">live · cowrie</span>') +
-      `<span class="chip">last event ${lastAge != null ? ago(lastAge) + ' ago' : '—'}</span>`;
+    const source = sim ? '<span class="chip lv-warn">simulated data</span>'
+      : data.source === 'cowrie' ? '<span class="chip lv-ok">live · cowrie</span>' : '<span class="chip lv-unknown">no data yet</span>';
+    $('hpSummary').innerHTML = source +
+      `<span class="chip">last event ${lastAge != null ? ago(lastAge) + ' ago' : '—'}</span>` + feedChips(data.feed_status);
     $('hpSub').textContent = sim
       ? 'Cowrie SSH/Telnet honeypot · last 24 h · SIMULATED until the cloud honeypot is connected'
       : 'Cowrie SSH/Telnet honeypot in the cloud · last 24 h · pulled through the bastion';

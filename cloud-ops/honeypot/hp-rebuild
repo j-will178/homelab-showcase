@@ -1,0 +1,140 @@
+#!/bin/bash
+# hp-rebuild [--refresh]: build and (re)deploy the honeypot on DigitalOcean.
+#   full (weekly, hp-rebuild.timer): new Packer image + new honeypot host key, terraform apply
+#        (only the honeypot is replaced; the new one is up before the old one goes).
+#   --refresh (daily, hp-refresh.timer, and after a merge that changes honeypot/terraform):
+#        terraform apply with the current image, e.g. to follow a changed home IP or exposure.
+# Code comes from the repo checkout (/opt/homelab/honeypot); state, keys and work dirs live in
+# /var/lib/honeypot (root only). Result in /var/lib/honeypot/status.json, shown on the dashboard.
+set -euo pipefail
+MODE=full; [[ "${1:-}" == "--refresh" ]] && MODE=refresh
+SRC=/opt/homelab/honeypot ETC=/etc/honeypot LIB=/var/lib/honeypot
+KEYS=$LIB/keys TF=$LIB/terraform PK=$LIB/packer STATUS=$LIB/status.json
+umask 077
+install -d -m 0711 "$LIB"        # traversable: the puller reads status.json and endpoints.json
+install -d -m 0700 "$KEYS" "$TF" "$PK"
+
+exec 9>/run/hp-rebuild.lock
+flock -n 9 || { echo "hp-rebuild: another rebuild is running"; exit 0; }
+
+# status KEY=VALUE...: merge into status.json (python: no jq on the box)
+status() {
+  python3 - "$STATUS" "$@" <<'PY'
+import json, os, sys, time
+path, kv = sys.argv[1], sys.argv[2:]
+try: st = json.load(open(path))
+except Exception: st = {}
+for a in kv:
+    k, v = a.split("=", 1)
+    st[k] = int(time.time()) if v == "@now" else (None if v == "" else v)
+tmp = path + ".tmp"
+with open(tmp, "w") as f: json.dump(st, f)
+os.chmod(tmp, 0o644); os.replace(tmp, path)
+PY
+}
+fail() { trap - ERR; status result=failed "error=$*" running=; echo "hp-rebuild: FAILED: $*" >&2; exit 1; }
+trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
+
+for f in "$ETC/do_token" "$ETC/admin.pub" "$ETC/lab_ed25519.pub" "$KEYS/bastion_host"; do
+  [[ -s "$f" ]] || { status result=waiting "error=one-time secrets not set up (sudo hp-secrets)"; echo "hp-rebuild: $f missing; run sudo hp-secrets"; exit 0; }
+done
+DIGITALOCEAN_TOKEN="$(cat "$ETC/do_token")"
+export DIGITALOCEAN_TOKEN CHECKPOINT_DISABLE=1 TF_IN_AUTOMATION=1 TF_INPUT=0 PACKER_NO_COLOR=1
+status "running=$MODE" running_since=@now
+
+# Home public IP: two independent lookups must agree (it goes into the cloud firewalls).
+ip_from() { curl -4fsS --max-time 10 --proto '=https' "$1" | tr -d '[:space:]'; }
+a="$(ip_from https://api.ipify.org || true)"; b="$(ip_from https://ipv4.icanhazip.com || true)"
+[[ -n "$a" && "$a" == "$b" ]] || fail "could not determine the home IP (got '$a' and '$b')"
+python3 -c 'import ipaddress,sys; ip=ipaddress.ip_address(sys.argv[1]); sys.exit(0 if ip.version==4 and ip.is_global else 1)' "$a" \
+  || fail "home IP '$a' is not a public IPv4 address"
+HOME_CIDR="$a/32"
+
+# Stage the code from git; keep state, lock file and provider cache.
+rsync -a --delete --exclude 'terraform.tfstate*' --exclude '.terraform/' --exclude '.terraform.lock.hcl' \
+  --exclude '*.auto.tfvars.json' "$SRC/terraform/" "$TF/"
+rsync -a --delete --exclude 'manifest.json' "$SRC/packer/" "$PK/"
+chmod 0700 "$TF" "$PK"            # rsync -a copies the repo's 755 onto them; the state lives here
+
+current="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("honeypot_image") or "")' "$STATUS" 2>/dev/null || true)"
+[[ "$MODE" == refresh && -z "$current" ]] && MODE=full     # nothing deployed yet
+
+# tfvars IMAGE HOSTKEY: secrets go in a root-only file, never on a command line (ps shows those).
+tfvars() {
+  python3 - "$TF/run.auto.tfvars.json" "$HOME_CIDR" "$1" "$ETC/lab_ed25519.pub" "$ETC/admin.pub" "$KEYS/bastion_host" "$2" <<'PY'
+import json, os, sys
+out, cidr, image, lab, admin, bhk, hhk = sys.argv[1:]
+rd = lambda p: open(p).read().strip()
+key = lambda p: {"private": rd(p) + "\n", "public": rd(p + ".pub")} if os.path.exists(p) else {"private": "none", "public": "none"}
+v = {"home_cidrs": [cidr], "honeypot_image": image, "lab_ssh_public_key": rd(lab), "admin_ssh_public_key": rd(admin),
+     "bastion_host_key": key(bhk), "honeypot_host_key": key(hhk)}
+fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f: json.dump(v, f)
+PY
+}
+
+cd "$TF"
+terraform init -input=false -no-color >/dev/null
+terraform validate -no-color
+
+image="$current" hostkey="$KEYS/honeypot_host"
+if [[ "$MODE" == full ]]; then
+  # 1. The build droplet's firewall first (SSH from home only), so it's covered from boot.
+  tfvars "${current:-none}" "$hostkey"
+  terraform apply -input=false -no-color -auto-approve \
+    -target=digitalocean_tag.build -target=digitalocean_firewall.build
+  # 2. New image.
+  cd "$PK"
+  packer init . >/dev/null
+  packer validate -var "region=nyc3" .
+  rm -f manifest.json
+  packer build -color=false -var "region=nyc3" .
+  image="$(python3 -c 'import json,sys; b=json.load(open("manifest.json"))["builds"][-1]; print(b["custom_data"]["snapshot_name"] if b.get("custom_data",{}).get("snapshot_name") else "")' 2>/dev/null || true)"
+  if [[ -z "$image" ]]; then   # older manifests: look the snapshot up by the build's id
+    id="$(python3 -c 'import json; print(json.load(open("manifest.json"))["builds"][-1]["artifact_id"].split(":")[-1])')"
+    image="$(curl -fsS --proto '=https' -K - "https://api.digitalocean.com/v2/snapshots/$id" <<<"header = \"Authorization: Bearer $DIGITALOCEAN_TOKEN\"" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["snapshot"]["name"])')"
+  fi
+  [[ "$image" =~ ^hp-honeypot-[0-9]{8}-[0-9]{4}$ ]] || fail "unexpected image name '$image'"
+  # 3. New identity for the new honeypot.
+  rm -f "$KEYS/honeypot_host.next" "$KEYS/honeypot_host.next.pub"
+  ssh-keygen -q -t ed25519 -N "" -C hp-honeypot -f "$KEYS/honeypot_host.next"
+  hostkey="$KEYS/honeypot_host.next"
+  cd "$TF"
+fi
+
+tfvars "$image" "$hostkey"
+terraform apply -input=false -no-color -auto-approve
+if [[ "$hostkey" == *.next ]]; then
+  mv -f "$KEYS/honeypot_host.next" "$KEYS/honeypot_host"; mv -f "$KEYS/honeypot_host.next.pub" "$KEYS/honeypot_host.pub"
+  tfvars "$image" "$KEYS/honeypot_host"     # same content, final path
+fi
+
+# Endpoints + pinned host keys for the puller (public data only).
+terraform output -json | python3 -c '
+import json, os, sys
+o = json.load(sys.stdin)
+e = {"bastion": o["bastion_address"]["value"], "honeypot": o["honeypot_address"]["value"],
+     "known_hosts": o["known_hosts"]["value"], "exposure": o["exposure"]["value"]}
+tmp = "/var/lib/honeypot/endpoints.json.tmp"
+with open(tmp, "w") as f: json.dump(e, f)
+os.chmod(tmp, 0o644); os.replace(tmp, "/var/lib/honeypot/endpoints.json")
+print("exposure:", e["exposure"])'
+exposure="$(python3 -c 'import json; print(json.load(open("/var/lib/honeypot/endpoints.json"))["exposure"])')"
+
+# Keep the current and previous snapshot, delete older ones.
+if [[ "$MODE" == full ]]; then
+  curl -fsS --proto '=https' -K - "https://api.digitalocean.com/v2/snapshots?resource_type=droplet&per_page=200" \
+    <<<"header = \"Authorization: Bearer $DIGITALOCEAN_TOKEN\"" \
+  | python3 -c '
+import json, re, sys
+s = [x for x in json.load(sys.stdin)["snapshots"] if re.fullmatch(r"hp-honeypot-\d{8}-\d{4}", x["name"])]
+for x in sorted(s, key=lambda x: x["name"])[:-2]: print(x["id"], x["name"])' \
+  | while read -r id name; do
+      curl -fsS --proto '=https' -X DELETE -K - "https://api.digitalocean.com/v2/snapshots/$id" \
+        <<<"header = \"Authorization: Bearer $DIGITALOCEAN_TOKEN\"" && echo "deleted old snapshot $name"
+    done
+  status last_rebuild_at=@now
+fi
+status result=ok error= running= "honeypot_image=$image" "exposure=$exposure" last_apply_at=@now
+echo "hp-rebuild: $MODE done: $image ($exposure)"

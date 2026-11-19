@@ -290,6 +290,21 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
             log.info("deploykeys: %s is waiting for its GitHub deploy key (from %s)", out["host"], self.client_address[0])
             return self._json(200, out)
 
+        def _honeypot_ingest(self):
+            # Cowrie log lines + lab-side status from cloud-ops (see honeypot.HoneypotFeed.ingest).
+            if not honeypot_store or not self._authorized("honeypot"):
+                return None if honeypot_store else self._json(404, {"error": "not found"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 2 * 1024 * 1024:
+                    raise ValueError("body must be 1 byte to 2 MB")
+                out = honeypot_store.ingest(json.loads(self.rfile.read(length).decode("utf-8")))
+            except (ValueError, UnicodeDecodeError) as e:
+                return self._json(400, {"error": str(e)})
+            if out.get("accepted"):
+                log.info("honeypot: %d events from %s", out["accepted"], self.client_address[0])
+            return self._json(200, out)
+
         def end_headers(self):
             # Static files: always revalidate, so a deploy shows up on the next
             # reload instead of whenever the browser's cache decides to expire.
@@ -305,6 +320,8 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._creds_post(path.rsplit("/", 1)[1])
             if path == "/api/deploykeys":
                 return self._deploykey_post()
+            if path == "/api/honeypot/ingest":
+                return self._honeypot_ingest()
             stores = {"/api/smart": ("smart", smart_store), "/api/metrics": ("metrics", metrics_store)}
             kind, store = stores.get(path, (None, None))
             if store is None:
@@ -446,26 +463,22 @@ def main():
                 i += 1
         threading.Thread(target=demo_metrics, daemon=True).start()
 
-    # Honeypot: simulated Cowrie events until the real honeypot's log is connected
-    # (same parser, analysis and aggregation as the real feed will use; see honeypot.py).
-    # Simulated history lives in RAM only, so it can never mix with the real 30-day history on disk.
-    honeypot_store = honeypot.HoneypotStore(source="simulated", db=honeypot.HoneypotDB(":memory:"))
-    hp_sim = honeypot.Simulator(honeypot_store)
-    hp_sim.backfill()
-
-    def honeypot_background():
-        hp_sim.backfill_history()            # days 2-30 for the Attack patterns screen (a few seconds)
-        threading.Thread(target=hp_sim.run_forever, daemon=True).start()
-        while True:                          # keep 30 days, drop older
-            time.sleep(3600)
-            honeypot_store.db.purge()
-    threading.Thread(target=honeypot_background, daemon=True).start()
-
-    broker = Broker()
+    geo = None
     if not args.demo:
         if not args.db:
             ap.error("--db is required unless --demo is used")
-        pipeline = Pipeline(args, Geo(args.db), broker)
+        geo = Geo(args.db)
+
+    # Honeypot: simulated Cowrie events until cloud-ops posts the first real ones to
+    # /api/honeypot/ingest, then the real feed for good (30 days in state/honeypot.db).
+    # Simulated history lives in RAM only, so it can never mix with the real history on disk.
+    honeypot_feed = honeypot.HoneypotFeed(str(Path(state_dir) / "honeypot.db") if state_dir else None, geo=geo)
+    honeypot_feed.start_background()
+    log.info("honeypot: %s", "real data (honeypot.db)" if honeypot_feed.live else "simulated until cloud-ops sends real events")
+
+    broker = Broker()
+    if not args.demo:
+        pipeline = Pipeline(args, geo, broker)
         threading.Thread(target=syslog_listener, args=(args.udp_port, pipeline), daemon=True).start()
 
         def report():
@@ -475,7 +488,7 @@ def main():
         threading.Thread(target=report, daemon=True).start()
 
     server = ThreadingHTTPServer((args.bind, args.http_port), make_handler(broker, page_config, smart_store, agent_token, metrics_store, deploy, cred_store,
-                                                                         honeypot_store, metrics.PendingDeployKeys()))
+                                                                         honeypot_feed, metrics.PendingDeployKeys()))
     server.daemon_threads = True
     log.info("dashboard at http://%s:%d/  (mode: %s)", socket.gethostname(), args.http_port, page_config["mode"])
     server.serve_forever()

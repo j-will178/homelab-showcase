@@ -1,0 +1,42 @@
+# Honeypot log puller: Cowrie log (through the bastion) -> rack dashboard. See cloud-ops/README.md.
+# Unprivileged and sandboxed: it handles attacker-controlled data (it only forwards it).
+[Unit]
+Description=Honeypot log puller (Cowrie -> rack dashboard)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/hp-pull
+DynamicUser=yes
+StateDirectory=hp-pull
+Environment=HOME=/var/lib/hp-pull
+# Root-only files, handed to this service only (readable by it in $CREDENTIALS_DIRECTORY).
+LoadCredential=lab_key:/etc/honeypot/lab_ed25519
+LoadCredential=agent_token:/etc/rack-agent/token
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

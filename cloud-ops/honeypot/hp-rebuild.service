@@ -1,0 +1,11 @@
+# Weekly: new Packer image, new honeypot (the bastion stays). See cloud-ops/README.md.
+[Unit]
+Description=Honeypot rebuild on DigitalOcean (new image + terraform apply)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hp-rebuild
+TimeoutStartSec=90min
+Nice=5

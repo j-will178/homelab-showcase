@@ -1,0 +1,12 @@
+# Daily, and after a merge that changes honeypot/terraform: terraform apply with the current image
+# (follows a changed home IP; applies a changed exposure).
+[Unit]
+Description=Honeypot terraform apply (current image)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hp-rebuild --refresh
+TimeoutStartSec=30min
+Nice=5

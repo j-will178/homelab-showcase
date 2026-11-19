@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily honeypot terraform apply (home IP, exposure)
+
+[Timer]
+OnCalendar=*-*-* 06:15
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

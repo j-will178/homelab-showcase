@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly honeypot rebuild
+
+[Timer]
+OnCalendar=Sun *-*-* 05:30
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
