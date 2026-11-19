@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 hp-pull: brings the honeypot's Cowrie log to the dashboard. Runs on cloud-ops as hp-pull.service
-(an unprivileged, sandboxed systemd DynamicUser).
+(the unprivileged system user hp-pull, sandboxed by systemd).
 
 Every 30 s:
   ssh hp-honeypot read INODE OFFSET     through the bastion, with the lab key; on the honeypot this

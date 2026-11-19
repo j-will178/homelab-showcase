@@ -438,6 +438,9 @@ deploy_cloudops_honeypot() {
   install -d -m 0700 /etc/honeypot || return 1
   # The lab key (cloud-ops -> bastion -> honeypot) exists from the start, so the puller can start.
   [[ -f /etc/honeypot/lab_ed25519 ]] || ssh-keygen -q -t ed25519 -N "" -C cloud-ops-honeypot-lab -f /etc/honeypot/lab_ed25519 || return 1
+  # The puller's account: no login, no home of its own (systemd provides its state directory).
+  id -u hp-pull >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/hp-pull --no-create-home \
+    --shell /usr/sbin/nologin hp-pull || return 1
   for f in "${!HP_DEST[@]}"; do
     dst="${HP_DEST[$f]% *}"; mode="${HP_DEST[$f]#* }"
     install -m "$mode" "$REPO_DIR/cloud-ops/honeypot/$f" "$dst" || return 1

@@ -96,7 +96,7 @@ Notes:
 | backup-compute | Hyper-V VM `cloud-ops` (created by `Sync-HyperV.ps1`, run by the agent; never changed or deleted automatically) | — | `vms/vms.json` (one-time: Hyper-V + switch `LAN`) |
 | cloud-ops | `rack-metrics-agent.service` (10 s loop), nftables, unattended-upgrades (reboot 04:45 if needed) | → optiplex-management:8080 | `homelab-deploy.timer` (role `cloud-ops`) |
 | cloud-ops | `homelab-deploy.timer` (first set up by `homelab-bootstrap` on first boot) | outbound SSH to GitHub | `vms/cloud-ops.user-data` |
-| cloud-ops | `hp-pull.service` (honeypot log puller, unprivileged DynamicUser, every 30 s) | → bastion:2222 → honeypot:47022 (SSH), → optiplex-management:8080 `/api/honeypot/ingest` | `homelab-deploy.timer` |
+| cloud-ops | `hp-pull.service` (honeypot log puller, unprivileged system user `hp-pull`, every 30 s) | → bastion:2222 → honeypot:47022 (SSH), → optiplex-management:8080 `/api/honeypot/ingest` | `homelab-deploy.timer` |
 | cloud-ops | `hp-rebuild.timer` (weekly: Packer image + `terraform apply`), `hp-refresh.timer` (daily `terraform apply`); Terraform + Packer, signature-verified | → api.digitalocean.com:443, → releases.hashicorp.com / registry.terraform.io / GitHub:443, → Packer build droplet:22 | `homelab-deploy.timer` (one-time: `sudo hp-secrets`) |
 
 ## Data and backups
