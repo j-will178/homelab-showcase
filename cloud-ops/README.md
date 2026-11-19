@@ -25,7 +25,7 @@ A small Debian 13 VM on **backup-compute** (Hyper-V). It holds everything that t
 |---|---|---|
 | **Terraform and Packer** (`/usr/local/bin`), versions pinned in `tools.env` | installed by the deploy | when `tools.env` changes |
 | `hp-rebuild` (`hp-rebuild.service`): new Packer image + `terraform apply`. Only the honeypot is replaced (new one up before the old one goes); old snapshots deleted, the last two kept | root | weekly, Sun ~05:30 (`hp-rebuild.timer`), and after a merge that changes `honeypot/packer/` |
-| `hp-rebuild --refresh` (`hp-refresh.service`): `terraform apply` with the current image. Follows a changed home IP into the cloud firewalls; applies a changed `exposure` | root | daily ~06:15 (`hp-refresh.timer`), and after a merge that changes `honeypot/terraform/` |
+| `hp-rebuild --refresh` (`hp-refresh.service`): `terraform apply` with the current image. Follows a changed home IP into the cloud firewalls; applies a changed `mode` | root | daily ~06:15 (`hp-refresh.timer`), and after a merge that changes `honeypot/terraform/` |
 | `hp-pull` (`hp-pull.service`): reads Cowrie's log through the bastion every 30 s and posts it to the dashboard (`/api/honeypot/ingest`) with this side's status | unprivileged system user `hp-pull`, sandboxed; gets only the lab key and agent token | always |
 | `hp-secrets`: the one-time step | you, with sudo | once |
 
@@ -70,7 +70,7 @@ Needs the DigitalOcean API token (custom scopes, see [`honeypot/README.md`](../h
 ssh -t cloud-ops sudo hp-secrets
 ```
 
-It checks the token against the API, saves both, and asks before the first build (DigitalOcean starts billing then, about $10/month). The build takes 10–15 minutes: `ssh cloud-ops journalctl -fu hp-rebuild`. It starts **lab-only**: Cowrie is reachable from the home IP only. Then work through the checklist in [`honeypot/README.md`](../honeypot/README.md#going-live-test-first-then-open-up).
+It checks the token against the API, saves both, and asks before the first build (DigitalOcean starts billing then, about $10/month). The build takes 10–15 minutes: `ssh cloud-ops journalctl -fu hp-rebuild`. It starts in mode **`lab-debug`**: Cowrie reachable from the home IP only, with full diagnostics on the dashboard (press **D** on the Honeypot screen). Then work through the checklist in [`honeypot/README.md`](../honeypot/README.md#going-live-test-first-then-open-up).
 
 To rebuild it from scratch: in Hyper-V Manager, delete the VM and its folder (`C:\Hyper-V\cloud-ops`), remove its old deploy key on GitHub, then **Deploy all**.
 

@@ -2,7 +2,7 @@
 
 A disposable Cowrie honeypot in the cloud, reached only through a bastion, with no outbound access. Its logs feed the dashboard's **Honeypot** and **Attack patterns** screens (simulated until this is running).
 
-> **Status:** ready, not created yet: nothing exists on DigitalOcean until the one-time `hp-secrets` step. It will start **lab-only** (`exposure`): Cowrie reachable from the home IP only, until the checklist below passes. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
+> **Status:** running in mode **`lab-debug`**: Cowrie reachable from the home IP only, with full diagnostics, until the checklist below passes. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
 
 ```mermaid
 flowchart LR
@@ -51,25 +51,33 @@ flowchart LR
 
 ## Going live: test first, then open up
 
-`exposure` in `terraform/variables.tf` decides who can reach Cowrie on 22/23:
-- **`lab-only`** (the default): only the home IP. Everything else about the honeypot is exactly as it will be live.
-- **`public`**: anyone.
+`mode` in `terraform/variables.tf` is the honeypot's stage:
 
-Going live, or back, is a **one-line PR** changing that default, applied by the next rebuild. So the switch is reviewed and recorded like everything else.
+| Mode | Who can reach Cowrie (22/23) | Health snapshot pulled with the log | For |
+|---|---|---|---|
+| **`lab-debug`** (now) | home IP only | full diagnostics: Cowrie's service log, errors since boot, cloud-init, nftables ruleset, listening sockets, failed units | building, breaking and fixing the pipeline |
+| **`lab`** | home IP only | the same minimal facts as production | the dress rehearsal: exactly what will run live, only you can reach it |
+| **`public`** | anyone | minimal: Cowrie up/down and restarts, ports listening, 22/23 redirects, nftables, cloud-init, failed units, disk | the real thing |
 
-**Checklist while lab-only:**
+The minimal facts stay in every mode so a dead Cowrie raises a chip instead of looking like a quiet day. The snapshot is written by root on the honeypot every minute (`hp-health`) and read by the collector key (`hp-log-read health`): the collector gets no new access, and nothing leaves the honeypot on its own. The Honeypot screen shows the mode and health as chips; **D** (or clicking a health chip) opens the diagnostics view, which also shows the last lines of a failed rebuild.
+
+Changing stage, forwards or back, is a **one-line PR** changing that default. Deploy all applies it right away, and it **replaces the honeypot**, because the mode is set at its first boot.
+
+**Checklist in `lab-debug`:**
 
 | # | Check | Expected |
 |---|---|---|
 | 1 | From the laptop, `ssh root@<honeypot>` on 22: two wrong passwords, then any other password; run `uname -a`, a `wget`, an `echo … >> .ssh/authorized_keys` | `123456`/`root` refused, others accepted, fake shell works |
-| 2 | On the honeypot (as `hpadmin` through the bastion): `tail -f /var/lib/cowrie/log/cowrie.json` | each event within a second |
+| 2 | On the honeypot (as `hpadmin` through the bastion: `ssh -J hpadmin@<bastion>:2222 -p 47022 hpadmin@<honeypot>`): `tail -f /var/lib/cowrie/log/cowrie.json` | each event within a second |
 | 3 | On cloud-ops: `sudo hp-pull ssh hp-honeypot read` | the same lines (proves jump user, forced command, pinned host keys) |
 | 4 | Dashboard, Honeypot screen | "simulated" label gone; the session, its summary and tags, the blocked download, within about one pull interval. Note the delay |
 | 5 | From **outside** the home network (phone hotspot): honeypot 22, 23, 47022 and bastion 2222 | all **time out** (dropped by the cloud firewall), none refused |
 | 6 | On the honeypot as `hpadmin`: `curl https://example.com`, then `journalctl -k \| grep hp-drop-out` | curl fails; the drop is logged. The `wget` from step 1 is a failed download in Cowrie's log |
 | 7 | `ssh jump@<bastion>` with a shell, or forwarding to a port other than 47022 | no shell; forward refused |
 
-**Go-live PR:** `exposure = "public"`, plus a one-time reset of the dashboard's honeypot history, so the test sessions (and the home IP on the map) don't stay in the 30-day data.
+**Then `mode = "lab"`:** repeat 1–4. Same results, with the diagnostics view showing only the minimal facts.
+
+**Go-live PR:** `mode = "public"`, plus a one-time reset of the dashboard's honeypot history, so the test sessions (and the home IP on the map) don't stay in the 30-day data.
 
 ## How a rebuild works
 

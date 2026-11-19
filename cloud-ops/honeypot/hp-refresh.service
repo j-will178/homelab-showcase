@@ -1,5 +1,5 @@
 # Daily, and after a merge that changes honeypot/terraform: terraform apply with the current image
-# (follows a changed home IP; applies a changed exposure).
+# (follows a changed home IP; applies a changed mode).
 [Unit]
 Description=Honeypot terraform apply (current image)
 Wants=network-online.target

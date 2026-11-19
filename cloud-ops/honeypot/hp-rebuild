@@ -3,7 +3,7 @@
 #   full (weekly, hp-rebuild.timer): new Packer image + new honeypot host key, terraform apply
 #        (only the honeypot is replaced; the new one is up before the old one goes).
 #   --refresh (daily, hp-refresh.timer, and after a merge that changes honeypot/terraform):
-#        terraform apply with the current image, e.g. to follow a changed home IP or exposure.
+#        terraform apply with the current image, e.g. to follow a changed home IP or mode.
 # Code comes from the repo checkout (/opt/homelab/honeypot); state, keys and work dirs live in
 # /var/lib/honeypot (root only). Result in /var/lib/honeypot/status.json, shown on the dashboard.
 set -euo pipefail
@@ -16,6 +16,12 @@ install -d -m 0700 "$KEYS" "$TF" "$PK"
 
 exec 9>/run/hp-rebuild.lock
 flock -n 9 || { echo "hp-rebuild: another rebuild is running"; exit 0; }
+
+# Everything this run prints also goes to a file, so a failure can show its last lines on the
+# dashboard (the journal keeps the full output as before).
+RUNLOG="$LIB/last-run.log"
+: > "$RUNLOG"; chmod 0600 "$RUNLOG"
+exec > >(tee -a "$RUNLOG") 2>&1
 
 # status KEY=VALUE...: merge into status.json (python: no jq on the box)
 status() {
@@ -32,7 +38,13 @@ with open(tmp, "w") as f: json.dump(st, f)
 os.chmod(tmp, 0o644); os.replace(tmp, path)
 PY
 }
-fail() { trap - ERR; status result=failed "error=$*" running=; echo "hp-rebuild: FAILED: $*" >&2; exit 1; }
+fail() {
+  trap - ERR
+  sleep 1   # let tee catch up
+  local t; t="$(grep -v '^hp-rebuild: FAILED' "$RUNLOG" | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^[[:space:]]*$' | tail -n 15 | cut -c1-300)"
+  status result=failed "error=$*" "error_tail=$t" running=
+  echo "hp-rebuild: FAILED: $*" >&2; exit 1
+}
 trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
 
 for f in "$ETC/do_token" "$ETC/admin.pub" "$ETC/lab_ed25519.pub" "$KEYS/bastion_host"; do
@@ -122,12 +134,12 @@ terraform output -json | python3 -c '
 import json, os, sys
 o = json.load(sys.stdin)
 e = {"bastion": o["bastion_address"]["value"], "honeypot": o["honeypot_address"]["value"],
-     "known_hosts": o["known_hosts"]["value"], "exposure": o["exposure"]["value"]}
+     "known_hosts": o["known_hosts"]["value"], "mode": o["mode"]["value"]}
 tmp = "/var/lib/honeypot/endpoints.json.tmp"
 with open(tmp, "w") as f: json.dump(e, f)
 os.chmod(tmp, 0o644); os.replace(tmp, "/var/lib/honeypot/endpoints.json")
-print("exposure:", e["exposure"])'
-exposure="$(python3 -c 'import json; print(json.load(open("/var/lib/honeypot/endpoints.json"))["exposure"])')"
+print("mode:", e["mode"])'
+hpmode="$(python3 -c 'import json; print(json.load(open("/var/lib/honeypot/endpoints.json"))["mode"])')"
 
 # Keep the current and previous snapshot, delete older ones.
 if [[ "$MODE" == full ]]; then
@@ -143,5 +155,5 @@ for x in sorted(s, key=lambda x: x["name"])[:-2]: print(x["id"], x["name"])' \
     done
   status last_rebuild_at=@now
 fi
-status result=ok error= running= "honeypot_image=$image" "exposure=$exposure" last_apply_at=@now
-echo "hp-rebuild: $MODE done: $image ($exposure)"
+status result=ok error= error_tail= running= "honeypot_image=$image" "mode=$hpmode" exposure= last_apply_at=@now
+echo "hp-rebuild: $MODE done: $image ($hpmode)"

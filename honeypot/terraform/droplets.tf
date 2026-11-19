@@ -53,6 +53,7 @@ resource "digitalocean_droplet" "honeypot" {
     admin_key        = var.admin_ssh_public_key
     # Outbound traffic leaves a droplet from its own address, not the reserved IP.
     bastion_ip       = digitalocean_droplet.bastion.ipv4_address
+    mode             = var.mode
   })
 
   lifecycle {

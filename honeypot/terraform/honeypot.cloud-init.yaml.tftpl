@@ -1,6 +1,7 @@
 #cloud-config
 # Honeypot first boot. Everything else is already in the Packer image; this only adds what is
-# specific to this instance: its SSH host key, the two authorized keys, and the bastion address.
+# specific to this instance: its SSH host key, the two authorized keys, the bastion address and the
+# mode (how much its health snapshot reports).
 # (Readable by root on the VM through the metadata service: nothing here is a secret worth more
 # than this disposable VM's own identity.)
 
@@ -20,6 +21,10 @@ write_files:
     permissions: "0600"
     content: |
       ${trimspace(admin_key)}
+  - path: /etc/honeypot-mode
+    permissions: "0644"
+    content: |
+      ${mode}
   - path: /etc/nftables.d/bastion.nft
     permissions: "0644"
     content: |

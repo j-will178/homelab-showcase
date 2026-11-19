@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars on cloud-ops (git-ignored). The rebuild script normally
 # supplies home_cidrs, honeypot_image and the host keys itself; this is for a manual run.
 region               = "tor1"
-# exposure is NOT set here: its default in variables.tf is the switch, changed by PR.
+# mode is NOT set here: its default in variables.tf is the switch, changed by PR.
 home_cidrs           = ["203.0.113.10/32"]          # your current public IP
 honeypot_image       = "hp-honeypot-20261118-0930"  # from packer's manifest.json
 lab_ssh_public_key   = "ssh-ed25519 AAAA... cloud-ops"

@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily honeypot terraform apply (home IP, exposure)
+Description=Daily honeypot terraform apply (home IP, mode)
 
 [Timer]
 OnCalendar=*-*-* 06:15

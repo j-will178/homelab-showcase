@@ -50,8 +50,12 @@ chmod g+s /var/lib/cowrie/log            # new log files stay group cowrie, read
 install -m 644 $F/cowrie.service /etc/systemd/system/cowrie.service
 systemctl enable cowrie.service
 
-# ---- log reader, sshd, firewall ----
+# ---- log reader, health snapshot, sshd, firewall ----
 install -m 755 $F/hp-log-read /usr/local/bin/hp-log-read
+install -m 755 $F/hp-health /usr/local/sbin/hp-health
+install -m 644 $F/hp-health.service $F/hp-health.timer /etc/systemd/system/
+install -d -o root -g collector -m 750 /var/lib/hp-health
+systemctl enable hp-health.timer
 install -m 644 $F/50-honeypot-sshd.conf /etc/ssh/sshd_config.d/50-honeypot.conf
 install -m 644 $F/nftables.conf /etc/nftables.conf
 install -d -m 755 /etc/nftables.d

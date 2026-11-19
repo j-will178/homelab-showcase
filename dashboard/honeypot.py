@@ -660,6 +660,38 @@ class Simulator:
                 self.store.add(ev, where=geo if i == 0 else None)
 
 
+HEALTH_DEBUG_KEYS = ("cowrie_journal", "boot_errors", "cloud_init", "nftables", "sockets", "failed_units")
+
+
+def clean_health(h):
+    """The honeypot's health snapshot (cloud-ops/honeypot + honeypot/packer/files/hp-health).
+    It comes from a machine attackers may control: only the known fields are kept, each with its
+    type checked and its length capped. Text is shown escaped, never interpreted."""
+    if not isinstance(h, dict):
+        return None
+    def s(v, n=40):
+        return v[:n] if isinstance(v, str) else None
+    def b(v):
+        return v if isinstance(v, bool) else None
+    def i(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+    def flags(v, keys):
+        return {k: b(v.get(k)) for k in keys} if isinstance(v, dict) else {}
+    cow = h.get("cowrie") if isinstance(h.get("cowrie"), dict) else {}
+    units = h.get("failed_units") if isinstance(h.get("failed_units"), list) else []
+    out = {"t": i(h.get("t")), "mode": s(h.get("mode")), "missing": b(h.get("missing")),
+           "cowrie": {"active": s(cow.get("active")), "sub": s(cow.get("sub")), "result": s(cow.get("result")),
+                      "restarts": i(cow.get("restarts"))},
+           "nftables": s(h.get("nftables")), "listening": flags(h.get("listening"), ("2222", "2223", "47022")),
+           "redirects": flags(h.get("redirects"), ("22", "23")), "cloud_init": s(h.get("cloud_init")),
+           "failed_units": [s(u, 80) for u in units if isinstance(u, str)][:10],
+           "disk_pct": i(h.get("disk_pct")), "uptime_s": i(h.get("uptime_s")), "log_bytes": i(h.get("log_bytes"))}
+    dbg = h.get("debug")
+    if isinstance(dbg, dict):
+        out["debug"] = {k: dbg[k][-8000:] for k in HEALTH_DEBUG_KEYS if isinstance(dbg.get(k), str)}
+    return out
+
+
 class HoneypotFeed:
     """What the Honeypot and Attack patterns screens show: simulated data until the first real
     Cowrie events arrive from cloud-ops (POST /api/honeypot/ingest), then the real feed, kept in
@@ -668,8 +700,8 @@ class HoneypotFeed:
     lab side (puller + rebuilds) for the status line."""
 
     MAX_LINES = 20000
-    STATUS_KEYS = ("state", "error", "pulled_at", "exposure", "honeypot_image", "last_rebuild_at", "last_apply_at",
-                   "rebuild_result", "rebuild_error", "running")
+    STATUS_KEYS = ("state", "error", "pulled_at", "mode", "honeypot_image", "last_rebuild_at", "last_apply_at",
+                   "rebuild_result", "rebuild_error", "rebuild_error_tail", "running")
 
     def __init__(self, db_path=None, geo=None, simulate=True):
         self.db_path, self.geo = db_path, geo
@@ -721,7 +753,9 @@ class HoneypotFeed:
             raise ValueError("bad id")
         with self.lock:
             if isinstance(st, dict):
-                self.status = {k: st.get(k) for k in self.STATUS_KEYS if isinstance(st.get(k), (str, int, float, type(None)))}
+                self.status = {k: (st[k][:6000] if isinstance(st[k], str) else st[k]) for k in self.STATUS_KEYS
+                               if k in st and isinstance(st[k], (str, int, float, type(None)))}
+                self.status["health"] = clean_health(st.get("health"))
                 self.status_at = now or time.time()
             if not lines:
                 return {"accepted": 0}

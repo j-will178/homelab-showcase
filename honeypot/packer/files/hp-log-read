@@ -6,6 +6,7 @@ hp-log-read: the only command cloud-ops's key can run on the honeypot
     ssh collector@honeypot read                 from the start of the oldest log file
     ssh collector@honeypot read INODE OFFSET    continue where the last read stopped
     ssh collector@honeypot status               position of the end of the newest file
+    ssh collector@honeypot health               the health snapshot written by hp-health (JSON)
 
 Output: one JSON header line, then up to MAX_BYTES of whole log lines.
     {"v": 1, "boot_id": "...", "inode": N, "offset": N, "more": true|false}
@@ -23,6 +24,7 @@ import re
 import sys
 
 LOG_DIR = "/var/lib/cowrie/log"
+HEALTH = "/var/lib/hp-health/health.json"
 MAX_BYTES = 4 * 1024 * 1024
 
 
@@ -96,12 +98,20 @@ def main():
         last = files[-1] if files else (None, None, 0)
         sys.stdout.write(header(last[1], last[2], False))
         return 0
+    if args == ["health"]:
+        try:
+            with open(HEALTH, "rb") as f:
+                data = f.read(256 * 1024)
+        except OSError:
+            data = b'{"v": 1, "missing": true}'
+        sys.stdout.buffer.write(data + b"\n")
+        return 0
     if args == ["read"]:
         head, data = read()
     elif len(args) == 3 and args[0] == "read" and args[1].isdigit() and args[2].isdigit() and len(args[1]) < 20 and len(args[2]) < 20:
         head, data = read(int(args[1]), int(args[2]))
     else:
-        sys.stderr.write("usage: read | read INODE OFFSET | status\n")
+        sys.stderr.write("usage: read | read INODE OFFSET | status | health\n")
         return 2
     out = sys.stdout.buffer
     out.write(head)

@@ -13,17 +13,19 @@ variable "home_cidrs" {
   }
 }
 
-variable "exposure" {
+variable "mode" {
   description = <<-EOT
-    Who can reach Cowrie on 22/23. "lab-only": only home_cidrs, for testing the whole pipeline
-    before real attackers arrive. "public": the internet. Going live (or back) is a one-line PR
-    changing this default.
+    The honeypot's stage. Each change is a one-line PR (this default) and replaces the honeypot.
+      "lab-debug": Cowrie reachable from home_cidrs only; full diagnostics in its health snapshot.
+                   For building, breaking and fixing the pipeline.
+      "lab":       home_cidrs only, and exactly what production reports. The dress rehearsal.
+      "public":    the internet. Health snapshot keeps only a few fixed facts.
   EOT
   type        = string
-  default     = "lab-only"
+  default     = "lab-debug"
   validation {
-    condition     = contains(["lab-only", "public"], var.exposure)
-    error_message = "exposure must be \"lab-only\" or \"public\"."
+    condition     = contains(["lab-debug", "lab", "public"], var.mode)
+    error_message = "mode must be \"lab-debug\", \"lab\" or \"public\"."
   }
 }
 

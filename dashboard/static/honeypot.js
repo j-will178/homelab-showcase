@@ -9,25 +9,96 @@
   const ACTIVE_MS = 3000, IDLE_MS = 30000;
   let data = null, fetchedAt = 0, active = false, world = null, projection = null, timer = null, dotScale = 1;
 
-  // The lab side (cloud-ops: log puller + weekly rebuild), from the puller's last post.
+  // The lab side (cloud-ops: log puller + weekly rebuild) and the honeypot's health snapshot,
+  // from the puller's last post. Chips marked data-diag open the diagnostics view (also: D key).
+  const MODES = { 'lab-debug': ['lv-warn', 'lab-debug: home only · diagnostics on'],
+                  lab: ['lv-warn', 'lab: home only · dress rehearsal'], public: ['lv-ok', 'public'] };
+  const now = () => Date.now() / 1000;
+  const chip = (cls, text, diag) => `<span class="chip ${cls}"${diag ? ' data-diag="1" role="button" tabindex="0"' : ''}>${esc(text)}</span>`;
+
+  function healthProblems(h) {
+    if (!h) return [];
+    if (h.missing) return [['lv-unknown', 'no health snapshot yet']];
+    const p = [];
+    if (h.cowrie?.active && h.cowrie.active !== 'active') p.push(['lv-crit', `Cowrie ${h.cowrie.active}${h.cowrie.restarts ? ` · ${h.cowrie.restarts} restarts` : ''}`]);
+    const ports = Object.entries(h.listening || {}).filter(([, v]) => v === false).map(([k]) => k);
+    if (ports.length) p.push(['lv-crit', `not listening: ${ports.join(', ')}`]);
+    const redir = Object.entries(h.redirects || {}).filter(([, v]) => v === false).map(([k]) => k);
+    if (redir.length) p.push(['lv-crit', `redirect missing: ${redir.join(', ')}`]);
+    if (h.nftables && h.nftables !== 'active') p.push(['lv-crit', `nftables ${h.nftables}`]);
+    if (h.failed_units?.length) p.push(['lv-warn', `${h.failed_units.length} failed unit${h.failed_units.length > 1 ? 's' : ''}`]);
+    if (h.cloud_init && !['done', 'disabled'].includes(h.cloud_init)) p.push(['lv-warn', `cloud-init ${h.cloud_init}`]);
+    if (h.disk_pct >= 85) p.push(['lv-warn', `disk ${h.disk_pct}%`]);
+    return p;
+  }
+
   function feedChips(f) {
     if (!f) return '';
     const age = f.age_s + since();
-    if (age > 180) return `<span class="chip lv-crit">cloud-ops not reporting · ${ago(age)} ago</span>`;
+    if (age > 180) return chip('lv-crit', `cloud-ops not reporting · ${ago(age)} ago`);
     const out = [];
     const msg = { 'waiting-secrets': 'honeypot: one-time secrets not set up (sudo hp-secrets on cloud-ops)',
                   'waiting-build': 'honeypot: waiting for its first build' };
-    if (msg[f.state]) out.push(`<span class="chip lv-unknown">${esc(msg[f.state])}</span>`);
-    else if (f.state === 'error') out.push(`<span class="chip lv-crit" title="${esc(f.error || '')}">pull failing: ${esc((f.error || '').slice(0, 60))}</span>`);
-    else if (f.pulled_at) out.push(`<span class="chip">pulled ${ago(Math.max(0, Date.now() / 1000 - f.pulled_at))} ago</span>`);
-    if (f.exposure) out.push(f.exposure === 'public' ? '<span class="chip lv-ok">public</span>'
-                                                      : '<span class="chip lv-warn">lab-only: reachable from home only</span>');
-    if (f.running) out.push(`<span class="chip lv-warn">${f.running === 'full' ? 'rebuilding' : 'applying'}…</span>`);
-    else if (f.rebuild_result === 'failed') out.push(`<span class="chip lv-crit" title="${esc(f.rebuild_error || '')}">last rebuild failed</span>`);
-    if (f.honeypot_image) out.push(`<span class="chip">${esc(f.honeypot_image.replace('hp-honeypot-', 'image '))}` +
-      (f.last_rebuild_at ? ` · rebuilt ${ago(Math.max(0, Date.now() / 1000 - f.last_rebuild_at))} ago` : '') + '</span>');
+    if (msg[f.state]) out.push(chip('lv-unknown', msg[f.state]));
+    else if (f.state === 'error') out.push(`<span class="chip lv-crit" title="${esc(f.error || '')}" data-diag="1" role="button" tabindex="0">pull failing: ${esc((f.error || '').slice(0, 60))}</span>`);
+    else if (f.pulled_at) out.push(chip('', `pulled ${ago(Math.max(0, now() - f.pulled_at))} ago`));
+    if (f.mode && MODES[f.mode]) out.push(chip(MODES[f.mode][0], MODES[f.mode][1]));
+    const problems = healthProblems(f.health);
+    if (problems.length) problems.forEach(([cls, t]) => out.push(chip(cls, t, true)));
+    else if (f.health && f.state !== 'error') out.push(chip('lv-ok', 'Cowrie running', true));
+    if (f.running) out.push(chip('lv-warn', `${f.running === 'full' ? 'rebuilding' : 'applying'}…`));
+    else if (f.rebuild_result === 'failed') out.push(chip('lv-crit', 'last rebuild failed', true));
+    if (f.honeypot_image) out.push(chip('', f.honeypot_image.replace('hp-honeypot-', 'image ') +
+      (f.last_rebuild_at ? ` · rebuilt ${ago(Math.max(0, now() - f.last_rebuild_at))} ago` : '')));
     return out.join('');
   }
+
+  // ---------- diagnostics view ----------
+  const DEBUG_TITLES = { cowrie_journal: 'Cowrie service log', boot_errors: 'Errors since boot', cloud_init: 'cloud-init',
+                         nftables: 'nftables ruleset', sockets: 'Listening sockets', failed_units: 'Failed units' };
+  function diagHtml(f) {
+    if (!f) return '<p class="muted">cloud-ops hasn\'t reported yet.</p>';
+    const h = f.health, parts = [];
+    if (f.rebuild_result === 'failed') parts.push(`<h3>Last rebuild failed</h3><p>${esc(f.rebuild_error || '')}</p>` +
+      (f.rebuild_error_tail ? `<pre>${esc(f.rebuild_error_tail)}</pre>` : ''));
+    if (f.state === 'error') parts.push(`<h3>Pull failing</h3><pre>${esc(f.error || '')}</pre>`);
+    if (!h) parts.push('<p class="muted">No health snapshot from the honeypot.</p>');
+    else {
+      const yn = v => v === true ? '<span class="ok">yes</span>' : v === false ? '<span class="bad">no</span>' : '—';
+      const rows = [
+        ['Mode', esc(h.mode || '—')], ['Cowrie', esc(`${h.cowrie?.active || '—'} (${h.cowrie?.sub || '—'})`) + (h.cowrie?.restarts ? ` · ${h.cowrie.restarts} restarts` : '')],
+        ['Listening 2222 / 2223 / 47022', ['2222', '2223', '47022'].map(p => yn(h.listening?.[p])).join(' / ')],
+        ['Redirect 22 / 23', ['22', '23'].map(p => yn(h.redirects?.[p])).join(' / ')],
+        ['nftables', esc(h.nftables || '—')], ['cloud-init', esc(h.cloud_init || '—')],
+        ['Failed units', esc((h.failed_units || []).join(', ') || 'none')],
+        ['Disk', h.disk_pct != null ? `${h.disk_pct}%` : '—'], ['Up', h.uptime_s != null ? ago(h.uptime_s) : '—'],
+        ['Cowrie log', h.log_bytes != null ? `${num(h.log_bytes)} bytes` : '—'],
+        ['Snapshot', h.t ? `${ago(Math.max(0, now() - h.t))} ago` : '—'],
+      ];
+      parts.push('<table class="facts">' + rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${v}</td></tr>`).join('') + '</table>');
+      if (h.debug) parts.push(Object.entries(DEBUG_TITLES).filter(([k]) => h.debug[k])
+        .map(([k, t]) => `<h3>${esc(t)}</h3><pre>${esc(h.debug[k])}</pre>`).join(''));
+      else parts.push(`<p class="muted">Full diagnostics are only collected in mode lab-debug${h.mode ? ` (now: ${esc(h.mode)})` : ''}.</p>`);
+    }
+    return parts.join('');
+  }
+  function renderDiag() {
+    if ($('hpDiag').hidden) return;
+    const f = data?.feed_status;
+    $('hpDiagSub').textContent = f?.mode ? `· ${f.mode}` : '';
+    const body = $('hpDiagBody'), keep = body.scrollTop;
+    body.innerHTML = diagHtml(f);
+    body.scrollTop = keep;
+  }
+  function openDiag(open) { $('hpDiag').hidden = !open; renderDiag(); }
+  $('hpSummary').addEventListener('click', e => { if (e.target.closest('[data-diag]')) openDiag(true); });
+  $('hpDiagClose').addEventListener('click', () => openDiag(false));
+  $('hpDiag').addEventListener('click', e => { if (e.target.id === 'hpDiag') openDiag(false); });
+  document.addEventListener('keydown', e => {
+    if (!active || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === 'd' || e.key === 'D') openDiag($('hpDiag').hidden);
+    else if (e.key === 'Escape') openDiag(false);
+  });
 
   function ago(s) {
     if (typeof s !== 'number') return '—';
@@ -172,6 +243,7 @@
       : data.source === 'cowrie' ? '<span class="chip lv-ok">live · cowrie</span>' : '<span class="chip lv-unknown">no data yet</span>';
     $('hpSummary').innerHTML = source +
       `<span class="chip">last event ${lastAge != null ? ago(lastAge) + ' ago' : '—'}</span>` + feedChips(data.feed_status);
+    renderDiag();
     $('hpSub').textContent = sim
       ? 'Cowrie SSH/Telnet honeypot · last 24 h · SIMULATED until the cloud honeypot is connected'
       : 'Cowrie SSH/Telnet honeypot in the cloud · last 24 h · pulled through the bastion';

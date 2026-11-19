@@ -4,9 +4,12 @@ hp-pull: brings the honeypot's Cowrie log to the dashboard. Runs on cloud-ops as
 (the unprivileged system user hp-pull, sandboxed by systemd).
 
 Every 30 s:
+  ssh hp-honeypot health                the honeypot's health snapshot (hp-health; full diagnostics
+                                        only in mode lab-debug)
   ssh hp-honeypot read INODE OFFSET     through the bastion, with the lab key; on the honeypot this
                                         key can only run hp-log-read (sshd ForceCommand)
-  POST /api/honeypot/ingest             the new log lines + this side's status, agent token
+  POST /api/honeypot/ingest             the new log lines + this side's status and the health
+                                        snapshot, agent token
 
 The lines are attacker-controlled. This program never interprets them: it only splits the reader's
 output into lines and forwards them; the dashboard parses them as hostile input.
@@ -31,7 +34,7 @@ import urllib.error
 import urllib.request
 
 LIB = "/var/lib/honeypot"
-ENDPOINTS = f"{LIB}/endpoints.json"        # from hp-rebuild: addresses, pinned host keys, exposure
+ENDPOINTS = f"{LIB}/endpoints.json"        # from hp-rebuild: addresses, pinned host keys, mode
 REBUILD = f"{LIB}/status.json"             # from hp-rebuild: last result, image, times
 DASHBOARD = "http://optiplex-management.home.arpa:8080/api/honeypot/ingest"
 EVERY = 30
@@ -138,13 +141,27 @@ def post(token, payload):
         return json.load(r)
 
 
-def status(state, error=None, pulled_at=None):
+def status(state, error=None, pulled_at=None, health=None):
     rb = read_json(REBUILD) or {}
     ep = read_json(ENDPOINTS) or {}
-    return {"state": state, "error": error, "pulled_at": pulled_at, "exposure": ep.get("exposure"),
+    return {"state": state, "error": error, "pulled_at": pulled_at, "mode": ep.get("mode"),
             "honeypot_image": rb.get("honeypot_image"), "last_rebuild_at": rb.get("last_rebuild_at"),
             "last_apply_at": rb.get("last_apply_at"), "rebuild_result": rb.get("result"),
-            "rebuild_error": rb.get("error"), "running": rb.get("running")}
+            "rebuild_error": rb.get("error"), "rebuild_error_tail": rb.get("error_tail"),
+            "running": rb.get("running"), "health": health}
+
+
+def fetch_health(cfg):
+    """The snapshot as the honeypot wrote it (attacker-influenced in places: forwarded, never
+    interpreted here). None if it can't be read; that never fails the pull."""
+    try:
+        p = subprocess.run(["ssh", "-F", cfg, "hp-honeypot", "health"], capture_output=True, timeout=60)
+        if p.returncode != 0 or len(p.stdout) > 256 * 1024:
+            return None
+        h = json.loads(p.stdout)
+        return h if isinstance(h, dict) else None
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        return None
 
 
 def cycle(state_dir, key, token, cursor, last_ok):
@@ -161,13 +178,14 @@ def cycle(state_dir, key, token, cursor, last_ok):
     if cursor.get("machine") != mid:
         log(f"new honeypot build ({mid}): reading its log from the start")
         cursor = {"machine": mid, "inode": None, "offset": 0}
+    health = fetch_health(cfg)
     try:
         while True:
             h, body = read_log(cfg, cursor["inode"], cursor["offset"])
             sent = 0
             for i, lines in enumerate(batches(body)):
                 r = post(token, {"id": batch_id(mid, cursor, i, lines), "lines": lines,
-                                 "status": status("ok", pulled_at=int(time.time()))})
+                                 "status": status("ok", pulled_at=int(time.time()), health=health)})
                 sent += r.get("accepted", 0)
             if h.get("inode") is not None:           # all of it accepted: continue after it next time
                 cursor = {"machine": mid, "inode": h["inode"], "offset": h["offset"]}
@@ -177,10 +195,10 @@ def cycle(state_dir, key, token, cursor, last_ok):
             if not h.get("more"):
                 break
         last_ok = int(time.time())
-        post(token, {"status": status("ok", pulled_at=last_ok)})
+        post(token, {"status": status("ok", pulled_at=last_ok, health=health)})
     except (RuntimeError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
         log(f"pull failed: {e}")
-        post(token, {"status": status("error", error=str(e)[:300], pulled_at=last_ok)})
+        post(token, {"status": status("error", error=str(e)[:300], pulled_at=last_ok, health=health)})
     return cursor, last_ok
 
 

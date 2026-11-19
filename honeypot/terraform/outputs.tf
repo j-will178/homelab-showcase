@@ -1,6 +1,6 @@
-output "exposure" {
-  description = "lab-only (Cowrie reachable from home only) or public."
-  value       = var.exposure
+output "mode" {
+  description = "lab-debug, lab (both: Cowrie reachable from home only) or public."
+  value       = var.mode
 }
 
 output "bastion_address" {

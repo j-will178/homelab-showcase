@@ -85,11 +85,28 @@ class FeedTest(unittest.TestCase):
 
     def test_status_passed_through_filtered(self):
         f = honeypot.HoneypotFeed(self.db, simulate=False)
-        f.ingest({"status": {"state": "ok", "exposure": "lab-only", "pulled_at": 5, "evil": "x", "error": {"no": 1}}}, now=100)
+        f.ingest({"status": {"state": "ok", "mode": "lab-debug", "pulled_at": 5, "evil": "x", "error": {"no": 1}}}, now=100)
         st = f.view(now=110)["feed_status"]
-        self.assertEqual((st["state"], st["exposure"], st["age_s"]), ("ok", "lab-only", 10))
+        self.assertEqual((st["state"], st["mode"], st["age_s"]), ("ok", "lab-debug", 10))
         self.assertNotIn("evil", st)
         self.assertNotIn("error", st)                          # not a scalar: dropped
+
+
+    def test_health_cleaned(self):
+        f = honeypot.HoneypotFeed(self.db, simulate=False)
+        h = {"v": 1, "t": 9, "mode": "lab-debug", "cowrie": {"active": "failed", "sub": "failed", "restarts": 7, "x": 1},
+             "listening": {"2222": False, "2223": "yes", "80": True}, "redirects": {"22": True, "23": True},
+             "failed_units": ["cowrie.service", 5, "<b>x</b>" * 50], "disk_pct": True, "log_bytes": 10,
+             "debug": {"cowrie_journal": "A" * 20000, "evil": "x", "nftables": 3}, "extra": "z"}
+        f.ingest({"status": {"state": "ok", "health": h}})
+        c = f.view()["feed_status"]["health"]
+        self.assertEqual(c["cowrie"], {"active": "failed", "sub": "failed", "result": None, "restarts": 7})
+        self.assertEqual(c["listening"], {"2222": False, "2223": None, "47022": None})
+        self.assertEqual((c["disk_pct"], c["log_bytes"], len(c["failed_units"]), len(c["failed_units"][1])), (None, 10, 2, 80))
+        self.assertEqual((list(c["debug"]), len(c["debug"]["cowrie_journal"])), (["cowrie_journal"], 8000))
+        self.assertNotIn("extra", c)
+        f.ingest({"status": {"state": "ok", "health": "nope"}})
+        self.assertIsNone(f.view()["feed_status"]["health"])
 
 
 class IngestEndpointTest(unittest.TestCase):

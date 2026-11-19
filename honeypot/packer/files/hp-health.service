@@ -1,0 +1,15 @@
+# Writes the honeypot's health snapshot for the lab (see hp-health). Root: it reads unit states,
+# the journal and the nftables ruleset; it writes one file and nothing else.
+[Unit]
+Description=Honeypot health snapshot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hp-health
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hp-health
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=no
+TimeoutStartSec=60

@@ -18,8 +18,8 @@ resource "digitalocean_tag" "build" { name = "hp-build" }
 
 locals {
   anywhere = ["0.0.0.0/0", "::/0"]
-  # Cowrie's audience: just the lab while testing, everyone once live (var.exposure)
-  cowrie_sources = var.exposure == "public" ? local.anywhere : var.home_cidrs
+  # Cowrie's audience: just the lab in lab-debug and lab, everyone once public (var.mode)
+  cowrie_sources = var.mode == "public" ? local.anywhere : var.home_cidrs
 }
 
 # ---- Cloud firewalls: enforced by DigitalOcean outside the VMs, deny by default. ----
@@ -74,7 +74,7 @@ resource "digitalocean_firewall" "honeypot" {
   name = "hp-honeypot"
   tags = [digitalocean_tag.honeypot.id]
 
-  # Cowrie: the lab only while testing, anyone once exposure = "public"
+  # Cowrie: the lab only while testing, anyone once mode = "public"
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"

@@ -1,0 +1,118 @@
+#!/usr/bin/python3
+"""
+hp-health: the honeypot's health snapshot, for the lab. Runs as root every minute
+(hp-health.timer) and writes /var/lib/hp-health/health.json (root:collector 0640). The collector
+key reads it with `hp-log-read health`; nothing is sent anywhere (the honeypot can't connect out).
+
+What goes in depends on the mode Terraform set at first boot (/etc/honeypot-mode):
+  every mode   a few fixed facts: Cowrie running?, ports listening, 22/23 redirects present,
+               nftables active, cloud-init result, failed units, disk, uptime, log size
+  lab-debug    also the raw evidence for debugging: Cowrie's journal, boot errors, cloud-init
+               detail, the nftables ruleset, listening sockets (each cut to its last 6000 chars)
+Missing or unknown mode: treated as public (least detail).
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import time
+
+OUT_DIR = "/var/lib/hp-health"
+OUT = f"{OUT_DIR}/health.json"
+MODE_FILE = "/etc/honeypot-mode"
+COWRIE_LOG = "/var/lib/cowrie/log/cowrie.json"
+MAX_TEXT = 6000
+
+
+def run(*cmd, timeout=15):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+        return p.returncode, (p.stdout + p.stderr)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 255, str(e)
+
+
+def tail(text):
+    return text if len(text) <= MAX_TEXT else "…" + text[-MAX_TEXT:]
+
+
+def mode():
+    try:
+        m = open(MODE_FILE).read().strip()
+    except OSError:
+        return "public"
+    return m if m in ("lab-debug", "lab", "public") else "public"
+
+
+def unit(name):
+    _, out = run("systemctl", "show", name, "--property=ActiveState,SubState,NRestarts,Result")
+    p = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    return {"active": p.get("ActiveState"), "sub": p.get("SubState"), "result": p.get("Result"),
+            "restarts": int(p["NRestarts"]) if p.get("NRestarts", "").isdigit() else None}
+
+
+def listening():
+    _, out = run("ss", "-Hltn")
+    ports = {int(m.group(1)) for m in re.finditer(r":(\d+)\s", out + " ")}
+    return {str(p): p in ports for p in (2222, 2223, 47022)}
+
+
+def redirects():
+    rc, out = run("nft", "list", "chain", "inet", "honeypot", "prerouting")
+    return {"22": rc == 0 and bool(re.search(r"tcp dport 22 redirect to :2222", out)),
+            "23": rc == 0 and bool(re.search(r"tcp dport 23 redirect to :2223", out))}
+
+
+def cloud_init():
+    _, out = run("cloud-init", "status")
+    m = re.search(r"status:\s*(\w+)", out)
+    return m.group(1) if m else "unknown"
+
+
+def failed_units():
+    _, out = run("systemctl", "list-units", "--failed", "--plain", "--no-legend")
+    return [l.split()[0] for l in out.splitlines() if l.strip()][:10]
+
+
+def snapshot():
+    m = mode()
+    disk = shutil.disk_usage("/")
+    try:
+        uptime = int(float(open("/proc/uptime").read().split()[0]))
+    except (OSError, ValueError):
+        uptime = None
+    h = {"v": 1, "t": int(time.time()), "mode": m, "cowrie": unit("cowrie.service"),
+         "nftables": unit("nftables.service")["active"], "listening": listening(), "redirects": redirects(),
+         "cloud_init": cloud_init(), "failed_units": failed_units(),
+         "disk_pct": round(100 * disk.used / disk.total), "uptime_s": uptime,
+         "log_bytes": os.path.getsize(COWRIE_LOG) if os.path.exists(COWRIE_LOG) else None}
+    if m == "lab-debug":
+        h["debug"] = {
+            "cowrie_journal": tail(run("journalctl", "-u", "cowrie", "-n", "60", "--no-pager", "-o", "short-iso")[1]),
+            "boot_errors": tail(run("journalctl", "-b", "-p", "err", "-n", "40", "--no-pager", "-o", "short-iso")[1]),
+            "cloud_init": tail(run("cloud-init", "status", "--long")[1]),
+            "nftables": tail(run("nft", "list", "ruleset")[1]),
+            "sockets": tail(run("ss", "-ltnp")[1]),
+            "failed_units": tail(run("systemctl", "--failed", "--no-pager")[1]),
+        }
+    return h
+
+
+def main():
+    h = snapshot()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    tmp = OUT + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(h, f)
+    try:
+        shutil.chown(tmp, "root", "collector")
+    except (LookupError, OSError):
+        pass
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, OUT)
+
+
+if __name__ == "__main__":
+    main()
