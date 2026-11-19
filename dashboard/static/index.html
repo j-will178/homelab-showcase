@@ -152,7 +152,11 @@
           <h1>Honeypot</h1>
           <p class="sub" id="hpSub">Cowrie SSH/Telnet honeypot · last 24 h</p>
         </div>
-        <div id="hpSummary" class="chips"></div>
+        <div class="hp-head-right">
+          <div id="hpSummary" class="chips"></div>
+          <a id="hpExport" class="chip export" href="api/honeypot/export.csv" download
+             title="Every stored honeypot event (up to 30 days) as a CSV file; add ?days=N to the URL for less">&#x2913; Export events (CSV)</a>
+        </div>
       </header>
       <div id="hpStats"></div>
       <div id="hpMapWrap" class="hpanel"><svg id="hpMap" aria-label="Where attackers connect from"></svg></div>

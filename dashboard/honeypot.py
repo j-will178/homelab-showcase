@@ -14,6 +14,8 @@ Everything here is attacker-controlled input: every string is length-limited and
 control characters, unknown event ids are ignored, and the page escapes everything it shows.
 """
 
+import csv
+import io
 import json
 import os
 import random
@@ -178,6 +180,23 @@ class HoneypotDB:
         with self.lock:
             rows = self.db.execute("SELECT t, session, kind, data FROM events WHERE t >= ? ORDER BY t, rowid", (t,)).fetchall()
         return [dict(json.loads(d), t=tt, session=ss, kind=k) for tt, ss, k, d in rows]
+
+    def iter_events(self, since, page=5000):
+        """Stored events from `since` on, oldest first, joined with their session's place, read in pages
+        so a long export never holds the lock (or all 30 days) at once."""
+        last = 0
+        while True:
+            with self.lock:
+                rows = self.db.execute(
+                    "SELECT e.rowid, e.t, e.session, e.kind, e.data, s.cc, s.country, s.city, s.protocol "
+                    "FROM events e LEFT JOIN sessions s ON s.id = e.session "
+                    "WHERE e.rowid > ? AND e.t >= ? ORDER BY e.rowid LIMIT ?", (last, since, page)).fetchall()
+            if not rows:
+                return
+            for rowid, t, session, kind, data, cc, country, city, protocol in rows:
+                yield dict(json.loads(data), t=t, session=session, kind=kind, cc=cc, country=country, city=city,
+                           session_protocol=protocol)
+            last = rows[-1][0]
 
     def purge(self, now=None):
         cutoff = (now or time.time()) - self.retention
@@ -694,6 +713,39 @@ class Simulator:
 HEALTH_DEBUG_KEYS = ("cowrie_journal", "boot_errors", "cloud_init", "nftables", "sockets", "failed_units", "sandbox_kills")
 
 
+CSV_COLUMNS = ["time_utc", "session", "event", "src_ip", "country_code", "country", "city", "protocol",
+               "username", "password", "command", "url", "client_version", "duration_s"]
+_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_cell(v):
+    """Attacker-typed text opened in Excel or LibreOffice must not run as a formula
+    (`=HYPERLINK(...)`, `@SUM(...)`): a leading = + - @ gets a ' in front, the usual spreadsheet escape."""
+    if v is None:
+        return ""
+    s = str(v)
+    return "'" + s if s.startswith(_FORMULA) else s
+
+
+def csv_rows(events):
+    """Stored events (HoneypotDB.iter_events) -> CSV lines, header first, in chunks of text."""
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\r\n")
+    w.writerow(CSV_COLUMNS)
+    for n, ev in enumerate(events, 1):
+        dur = ev.get("duration")
+        w.writerow([csv_cell(x) for x in (
+            datetime.fromtimestamp(ev["t"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), ev["session"], ev["kind"],
+            ev.get("ip"), ev.get("cc"), ev.get("country"), ev.get("city"), ev.get("protocol") or ev.get("session_protocol"),
+            ev.get("username"), ev.get("password"), ev.get("input"), ev.get("url"), ev.get("version"),
+            f"{dur:.1f}" if isinstance(dur, (int, float)) else None)])
+        if n % 2000 == 0:
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+    yield buf.getvalue()
+
+
 def clean_health(h):
     """The honeypot's health snapshot (cloud-ops/honeypot + honeypot/packer/files/hp-health).
     It comes from a machine attackers may control: only the known fields are kept, each with its
@@ -829,3 +881,16 @@ class HoneypotFeed:
 
     def patterns_view(self, now=None):
         return dict(self.store.patterns_view(now), feed_status=self._feed_status(now or time.time()))
+
+    def export_csv(self, days=None, now=None):
+        """-> (file name, iterator of CSV text) for the last `days` days (default and maximum: what's kept),
+        or None when there's no history yet. Simulated data says so in the file name."""
+        db = self.store.db
+        if db is None:
+            return None
+        keep = db.retention / 86400
+        days = keep if days is None else max(0.0, min(float(days), keep))
+        now = now or time.time()
+        stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%d-%H%M")
+        name = f"honeypot-{'events' if self.live else 'simulated'}-{stamp}-{days:g}d.csv"
+        return name, csv_rows(db.iter_events(now - days * 86400))

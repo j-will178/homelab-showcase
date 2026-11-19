@@ -65,7 +65,9 @@ def snapshot():
     sim = honeypot.Simulator(hp, seed=2026, now=now)
     sim.backfill(now=now)
     sim.backfill_history(now=now)
-    return {
+    # The export button's file: the last 24 h only (30 days of simulated events would be far too big).
+    csv_text = "".join(honeypot.csv_rows(hp.db.iter_events(now - 86400)))
+    return csv_text, {
         "built_at": int(now),
         "honeypot": hp.view(now=now),
         "honeypot_patterns": hp.patterns_view(now=now),
@@ -89,7 +91,10 @@ def main():
     shutil.copytree(DASHBOARD / "static", args.out)
     shutil.copy(HERE / "demo-api.js", args.out / "demo-api.js")
 
-    (args.out / "demo-data.json").write_text(json.dumps(snapshot(), separators=(",", ":")))
+    csv_text, data = snapshot()
+    (args.out / "demo-data.json").write_text(json.dumps(data, separators=(",", ":")))
+    (args.out / "api" / "honeypot").mkdir(parents=True)
+    (args.out / "api" / "honeypot" / "export.csv").write_text("\ufeff" + csv_text, encoding="utf-8")
     # An arbitrary point (Kansas City) for the noise map's arcs; not anyone's location.
     (args.out / "config.json").write_text(json.dumps(
         {"mode": "demo", "home": [39.1, -94.58], "attribution": "", "interval": args.interval,

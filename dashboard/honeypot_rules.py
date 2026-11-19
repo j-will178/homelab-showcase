@@ -16,7 +16,15 @@ import hashlib
 import re
 from urllib.parse import urlsplit
 
+ARITH_RE = re.compile(r"\$\(\(([^()]*)\)\)")   # $((403*680+1)): honeypot detectors randomize the numbers
+
+
+def _arith(m):
+    return "$((" + re.sub(r"\d+", "<n>", m.group(1)) + "))"
+
+
 PLACEHOLDERS = [
+    (ARITH_RE, _arith),
     (re.compile(r"\b(?:https?|ftp|tftp)://[^\s;|&\"'`)]+", re.I), "<url>"),
     (re.compile(r"\bssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]{16,}(?:\s+[^\s\"'>]+)?"), "<ssh-key>"),
     (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b"), "<ip>"),
@@ -29,12 +37,18 @@ URL_RE = re.compile(r"\b(?:https?|ftp|tftp)://([^\s/;|&\"'`):]+)", re.I)
 TFTP_HOST_RE = re.compile(r"\btftp\b[^;|&]*?\s((?:\d{1,3}\.){3}\d{1,3})\b")
 
 
+URL_FIND = PLACEHOLDERS[1][0]
+# Mirai-family bots run `/bin/busybox WORD`: busybox answers "WORD: applet not found", which proves a
+# real BusyBox shell echoes output back. The word is chosen per botnet variant, so it's worth showing.
+MARKER_RE = re.compile(r"\bbusybox\s+([A-Z][A-Z0-9_]{3,})\b")
+
+
 def payload_names(commands):
     """File names a session downloads (last part of each URL path): bots rename payloads per run
     (x86_64, arm7, sshd...), so within a session these become <file> too."""
     names = set()
     for c in commands:
-        for url in PLACEHOLDERS[0][0].findall(str(c)):
+        for url in URL_FIND.findall(str(c)):
             name = urlsplit(url).path.rsplit("/", 1)[-1]
             base = name.rsplit(".", 1)[0]
             for n in (name, base):
@@ -73,7 +87,7 @@ RULES = [
     ("recon", r"\bdf\b|\bmount\b|\blsblk\b", "disks"),
     ("recon", r"\buptime\b", "uptime"),
     ("recon", r"\bifconfig\b|\bip (a|addr|route)\b", "network"),
-    ("recon", r"ls -lh \$\(which|\bfile /bin/", "binary architecture"),
+    ("recon", r"ls -lh \$\(which|\bfile /bin/|/proc/self/exe", "binary architecture"),
     ("recon", r"\bps (aux|-ef)\b(?!.*(miner|xmr))|\btop\b", "running processes"),
     ("recon", r"\bls -\w*\s+/(home|root)\b", "home directories"),
     ("persistence", r"authorized_keys", "replaced the SSH authorized keys to keep access"),
@@ -90,15 +104,27 @@ RULES = [
     ("execution", r"(^|[;&|]\s*)\./|\bnohup\b|\bsh <file>|\bperl -e\b|\bpython3? -c\b", "ran a program"),
     ("miner-hunt", r"\bxmrig\b|\bminer\b|\bkinsing\b|\bkdevtmpfsi\b", "looked for and killed competing crypto-miners"),
     ("credential-access", r"/etc/(passwd|shadow)|\.ssh/id_|\.aws/|\.docker/config", "read account and key files"),
-    ("iot-probe", r"^(enable|system|shell|sh|linuxshell)$|/bin/busybox|cat /bin/echo", "probed for a router/IoT shell"),
-    ("liveness", r"echo -e [\"']\\\\?x|^echo \S+$", "checked the shell answers"),
+    ("iot-probe", r"^(enable|system|shell|sh|linuxshell)$|^ping\s*;\s*sh$",
+     "tried to break out of a restricted router console (enable, system, shell)"),
+    ("iot-probe", r"/bin/busybox|cat /bin/echo", "probed for a BusyBox IoT shell"),
+    ("drop-site", r">\s*/[\w./-]*/\.\w+\s*&&\s*chmod 7\d\d\b",
+     "searched for a writable, executable directory to drop malware in"),
+    # Honeypot detectors: shell-fidelity tests (random arithmetic, $$, positional parameters, functions,
+    # subshells), then /proc/self/stat vs /proc/self/status (Pid/NSpid) for a real process and a container.
+    ("honeypot-check", r"\$\(\(\s*\d+\s*[-*+]\s*\d+|\bset -- |\(\w+=\w+;\s*printf|\b\w+\(\) \{ printf|"
+     r"\"\$\$\"|\| while IFS= read|>&2; exit \d+",
+     "tested whether the shell is real (arithmetic, functions, subshells)"),
+    ("honeypot-check", r"/proc/self/stat\b|/proc/self/status|\bnspid\b",
+     "checked /proc/self for a real process and a container (Cowrie fails this step)"),
+    ("liveness", r"echo -e [\"']\\\\?x|^echo \S+$|^(sh -c ')?printf\b|^echo; echo\b", "checked the shell answers"),
     # shell plumbing: recognized (so it isn't "unrecognized"), but not worth a sentence
-    ("housekeeping", r"^(cd|ls|pwd|clear|exit|export \w+=)\b(?!.*\.ssh)|^rm -rf? [\w./<>-]+$", ""),
+    ("housekeeping", r"^(cd|ls|pwd|clear|exit|export \w+=)\b(?!.*\.ssh)|^rm -rf? [\w./<>-]+$|^$", ""),
 ]
 _RULES = [(tag, re.compile(rx, re.I), phrase) for tag, rx, phrase in RULES]
-TAG_ORDER = ["recon", "credential-access", "iot-probe", "miner-hunt", "malware-drop", "execution",
-             "persistence", "cover-tracks", "liveness"]
-TAG_LABEL = {"recon": "Recon", "credential-access": "Credential grab", "iot-probe": "IoT shell probe",
+TAG_ORDER = ["honeypot-check", "recon", "credential-access", "iot-probe", "drop-site", "miner-hunt", "malware-drop",
+             "execution", "persistence", "cover-tracks", "liveness"]
+TAG_LABEL = {"honeypot-check": "Honeypot check", "drop-site": "Drop-site search",
+             "recon": "Recon", "credential-access": "Credential grab", "iot-probe": "IoT shell probe",
              "miner-hunt": "Miner hunting", "malware-drop": "Malware drop", "execution": "Execution",
              "persistence": "Persistence", "cover-tracks": "Track covering", "liveness": "Liveness check"}
 
@@ -129,7 +155,7 @@ def _join(parts):
 
 
 def analyze(commands, downloads=(), username=None, password=None):
-    """-> {fingerprint, tags, label, summary, unrecognized, hosts}"""
+    """-> {fingerprint, tags, label, summary, unrecognized, hosts, markers}"""
     found = {}
     unrecognized = []
     for c, n in zip(commands, normalize_all(commands)):
@@ -142,14 +168,25 @@ def analyze(commands, downloads=(), username=None, password=None):
                 found[tag].append(phrase)
     tags = [t for t in TAG_ORDER if t in found]
     hosts = payload_hosts(commands, downloads)
+    markers = []
+    for c in commands:
+        for m in MARKER_RE.findall(str(c)):
+            if m not in markers:
+                markers.append(m)
 
     steps = []
+    if "honeypot-check" in found:
+        steps.append(_join(found["honeypot-check"][:2]))
     if "recon" in found:
         steps.append(f"fingerprinted the system ({', '.join(found['recon'][:4])})")
     if "credential-access" in found:
         steps.append(found["credential-access"][0])
     if "iot-probe" in found:
-        steps.append(found["iot-probe"][0])
+        mark = f" with the botnet marker \u201c{_join(markers[:3])}\u201d" if markers else ""
+        probe = [p + mark if p.startswith("probed") else p for p in found["iot-probe"][:2]]
+        steps.append(_join(probe))
+    if "drop-site" in found:
+        steps.append(found["drop-site"][0])
     if "miner-hunt" in found:
         steps.append(found["miner-hunt"][0])
     if "malware-drop" in found:
@@ -177,4 +214,5 @@ def analyze(commands, downloads=(), username=None, password=None):
     if steps and unrecognized:
         text += f" Also ran {len(unrecognized)} unrecognized command{'s' if len(unrecognized) != 1 else ''}."
     return {"fingerprint": fingerprint(commands) if commands else None, "tags": tags, "label": label(tags),
-            "summary": who + text, "unrecognized": unrecognized, "hosts": hosts}
+            "summary": who + text, "unrecognized": unrecognized, "hosts": hosts,
+            "markers": markers}

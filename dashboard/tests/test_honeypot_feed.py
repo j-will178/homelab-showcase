@@ -1,4 +1,6 @@
 """Run: python3 -m unittest discover dashboard/tests"""
+import csv
+import io
 import json
 import sys
 import tempfile
@@ -158,6 +160,44 @@ class IngestEndpointTest(unittest.TestCase):
         with urllib.request.urlopen(self.base + "/api/honeypot", timeout=5) as r:
             v = json.load(r)
         self.assertEqual((v["source"], v["feed_status"]["state"]), ("cowrie", "ok"))
+
+    def get(self, path):
+        try:
+            with urllib.request.urlopen(self.base + path, timeout=5) as r:
+                return r.status, r.headers, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, b""
+
+    def test_csv_export(self):
+        self.assertEqual(self.get("/api/honeypot/export.csv")[0], 404)       # nothing stored yet
+        now = time.time()
+        old = [x.replace('"s1"', '"s0"') for x in session_lines(now - 3 * 86400)]
+        hostile = line("cowrie.command.input", now - 7, input='=HYPERLINK("http://198.51.100.9","x"), b')
+        self.post({"id": "1", "lines": old + session_lines(now - 10) + [hostile]})
+        code, headers, body = self.get("/api/honeypot/export.csv")
+        self.assertEqual(code, 200)
+        self.assertTrue(headers["Content-Type"].startswith("text/csv"))
+        self.assertIn('filename="honeypot-events-', headers["Content-Disposition"])
+        text = body.decode("utf-8-sig")
+        rows = list(csv.reader(io.StringIO(text)))
+        self.assertEqual(rows[0], honeypot.CSV_COLUMNS)
+        self.assertEqual(len(rows), 1 + 9)
+        by = {r[2]: r for r in rows[1:] if r[1] == "s1"}
+        self.assertEqual(by["login_success"][8:10], ["root", "hunter2"])
+        self.assertEqual(by["closed"][13], "3.0")
+        self.assertEqual(by["command"][7], "ssh")                             # session's protocol on every row
+        self.assertIn("'=HYPERLINK(", text)                                   # never a live formula
+        self.assertEqual(len(list(csv.reader(io.StringIO(self.get("/api/honeypot/export.csv?days=1")[2].decode("utf-8-sig"))))), 1 + 5)
+        self.assertEqual(self.get("/api/honeypot/export.csv?days=abc")[0], 400)
+        self.assertEqual(self.get("/api/honeypot/export.csv?days=-1")[0], 400)
+
+
+class CsvCellTest(unittest.TestCase):
+    def test_formula_prefixes_escaped(self):
+        for v in ("=1+1", "+cmd", "-2+3", "@SUM(A1)", "\tx"):
+            self.assertEqual(honeypot.csv_cell(v), "'" + v)
+        self.assertEqual(honeypot.csv_cell("uname -a"), "uname -a")
+        self.assertEqual(honeypot.csv_cell(None), "")
 
 
 if __name__ == "__main__":

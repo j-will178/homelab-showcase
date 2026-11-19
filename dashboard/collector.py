@@ -12,9 +12,10 @@ Serves the rack dashboard (a slideshow of screens) and feeds its screens:
     (bearer token); the page reads them back from GET /api/smart.
   * Compute: the same agents POST a metrics sample every 10 seconds to
     /api/metrics; GET /api/metrics returns the latest + ~1 h of history.
-  * Honeypot: Cowrie events aggregated over 24 h at GET /api/honeypot, and attack
-    patterns over 30 days at GET /api/honeypot/patterns. For now SIMULATED
-    (honeypot.Simulator); the real honeypot's log plugs into the same store.
+  * Honeypot: Cowrie events aggregated over 24 h at GET /api/honeypot, attack
+    patterns over 30 days at GET /api/honeypot/patterns, and every stored event as
+    CSV at GET /api/honeypot/export.csv[?days=N]. Simulated (honeypot.Simulator)
+    until cloud-ops posts real Cowrie events to POST /api/honeypot/ingest.
 
 Only dependency outside the standard library: maxminddb  (pip install maxminddb)
 
@@ -238,7 +239,39 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(200, honeypot_store.view() if honeypot_store else {"source": None})
             if path == "/api/honeypot/patterns":
                 return self._json(200, honeypot_store.patterns_view() if honeypot_store else {"source": None})
+            if path == "/api/honeypot/export.csv":
+                return self._honeypot_csv()
             return super().do_GET()
+
+        def _honeypot_csv(self):
+            # Every stored honeypot event (30 days at most) as CSV, for analysis outside the dashboard.
+            # ?days=N limits it. Streamed: HTTP/1.0, so closing the connection ends the body.
+            from urllib.parse import parse_qs, urlsplit
+            raw = (parse_qs(urlsplit(self.path).query).get("days") or [None])[0]
+            try:
+                days = None if raw in (None, "") else float(raw)
+                if days is not None and not 0 < days <= 3650:
+                    raise ValueError
+            except ValueError:
+                return self._json(400, {"error": "days must be a number above 0"})
+            out = honeypot_store.export_csv(days) if honeypot_store else None
+            if out is None:
+                return self._json(404, {"error": "no honeypot history yet"})
+            name, chunks = out
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            try:
+                self.wfile.write(b"\xef\xbb\xbf")     # BOM: Excel then reads UTF-8 correctly
+                for chunk in chunks:
+                    self.wfile.write(chunk.encode("utf-8"))
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            self.close_connection = True
+            log.info("honeypot: CSV export (%s) to %s", name, self.client_address[0])
 
         def _authorized(self, what):
             if not agent_token:
