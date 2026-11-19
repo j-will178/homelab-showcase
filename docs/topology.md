@@ -4,7 +4,7 @@ This is the source of truth for how the lab is laid out. **Update it in the same
 
 Diagrams are Mermaid, so GitHub renders them inline and changes show up as readable diffs.
 
-_Last updated: 2026-11-18_
+_Last updated: 2026-11-19_
 
 ## Hosts
 
@@ -145,7 +145,7 @@ Planned:
 ## Open items
 
 - [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
-- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), lab side running on cloud-ops; running in mode `lab-debug`: Cowrie reachable from home only, full health diagnostics pulled with the log): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs pulled by cloud-ops into the dashboard's Honeypot screen (simulated data until then). Network paths once created:
+- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), lab side running on cloud-ops; running in mode `lab` (dress rehearsal): Cowrie reachable from home only, minimal health pulled with the log): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs pulled by cloud-ops into the dashboard's Honeypot screen (simulated data until then). Network paths once created:
 
   | From | To | Port | Allowed by |
   |---|---|---|---|

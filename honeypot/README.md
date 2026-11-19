@@ -2,7 +2,7 @@
 
 A disposable Cowrie honeypot in the cloud, reached only through a bastion, with no outbound access. Its logs feed the dashboard's **Honeypot** and **Attack patterns** screens (simulated until this is running).
 
-> **Status:** running in mode **`lab-debug`**: Cowrie reachable from the home IP only, with full diagnostics, until the checklist below passes. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
+> **Status:** running in mode **`lab`**, the dress rehearsal: Cowrie reachable from the home IP only, reporting exactly what it will in production. The `lab-debug` checklist below passed on 2026-11-19. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
 
 ```mermaid
 flowchart LR
@@ -55,8 +55,8 @@ flowchart LR
 
 | Mode | Who can reach Cowrie (22/23) | Health snapshot pulled with the log | For |
 |---|---|---|---|
-| **`lab-debug`** (now) | home IP only | full diagnostics: Cowrie's service log, errors since boot, cloud-init, nftables ruleset, listening sockets, failed units | building, breaking and fixing the pipeline |
-| **`lab`** | home IP only | the same minimal facts as production | the dress rehearsal: exactly what will run live, only you can reach it |
+| **`lab-debug`** | home IP only | full diagnostics: Cowrie's service log, errors since boot, cloud-init, nftables ruleset, listening sockets, failed units | building, breaking and fixing the pipeline |
+| **`lab`** (now) | home IP only | the same minimal facts as production | the dress rehearsal: exactly what will run live, only you can reach it |
 | **`public`** | anyone | minimal: Cowrie up/down and restarts, ports listening, 22/23 redirects, nftables, cloud-init, failed units, disk | the real thing |
 
 The minimal facts stay in every mode so a dead Cowrie raises a chip instead of looking like a quiet day. The snapshot is written by root on the honeypot every minute (`hp-health`) and read by the collector key (`hp-log-read health`): the collector gets no new access, and nothing leaves the honeypot on its own. The Honeypot screen shows the mode and health as chips; **D** (or clicking a health chip) opens the diagnostics view, which also shows the last lines of a failed rebuild.

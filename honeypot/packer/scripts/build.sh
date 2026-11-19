@@ -67,6 +67,14 @@ systemctl enable nftables.service
 nft -c -f /etc/nftables.conf              # syntax check now, not at first boot
 sshd -t -f /etc/ssh/sshd_config -o HostKey=/etc/ssh/ssh_host_ed25519_key 2>&1 || { echo "sshd config invalid"; exit 1; }
 
+# ---- DigitalOcean image noise: two units that only ever fail here, hiding real errors ----
+# vpc-peering.service runs a DigitalOcean script that isn't shipped (no VPC peering here), and the
+# systemd ssh generator looks for a VM socket (AF_VSOCK) DigitalOcean doesn't provide. Masking a
+# generator: a /dev/null symlink of the same name in /etc/systemd/system-generators.
+systemctl mask vpc-peering.service
+install -d -m 755 /etc/systemd/system-generators
+ln -sfn /dev/null /etc/systemd/system-generators/systemd-ssh-generator
+
 # ---- cloud-init: host key and authorized keys come from Terraform at first boot ----
 cat > /etc/cloud/cloud.cfg.d/99-honeypot.cfg <<'CFG'
 disable_root: true
