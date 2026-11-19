@@ -67,16 +67,12 @@ systemctl enable nftables.service
 nft -c -f /etc/nftables.conf              # syntax check now, not at first boot
 sshd -t -f /etc/ssh/sshd_config -o HostKey=/etc/ssh/ssh_host_ed25519_key 2>&1 || { echo "sshd config invalid"; exit 1; }
 
-# ---- DigitalOcean image noise: two units that only ever fail here, hiding real errors ----
-# vpc-peering.service runs a DigitalOcean script that isn't shipped (no VPC peering here), and the
-# systemd ssh generator looks for a VM socket (AF_VSOCK) DigitalOcean doesn't provide.
-# DigitalOcean ships its unit in /etc/systemd/system, where `systemctl mask` refuses to overwrite it:
-# remove it, then mask (a later write to it lands on /dev/null). A generator is masked with a
-# /dev/null symlink of the same name in /etc/systemd/system-generators.
-# Cosmetic, so none of this may fail the build.
-systemctl disable vpc-peering.service 2>/dev/null || true
-rm -f /etc/systemd/system/vpc-peering.service
-systemctl mask vpc-peering.service || echo "note: could not mask vpc-peering.service (cosmetic)"
+# ---- DigitalOcean image noise ----
+# The systemd ssh generator looks for a VM socket (AF_VSOCK) DigitalOcean doesn't provide and logs
+# an error on every boot. Masked: a /dev/null symlink of the same name in system-generators.
+# Not touched: vpc-peering.service. DigitalOcean's vendor script (00-vpc-peering) re-enables it on
+# every new droplet, and fails cloud-init if it's masked. Its own failure is one harmless log line.
+# Cosmetic, so this may never fail the build.
 install -d -m 755 /etc/systemd/system-generators
 ln -sfn /dev/null /etc/systemd/system-generators/systemd-ssh-generator || echo "note: could not mask systemd-ssh-generator (cosmetic)"
 
