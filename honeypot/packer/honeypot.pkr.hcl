@@ -44,6 +44,8 @@ source "digitalocean" "honeypot" {
   droplet_name  = "hp-build-${local.stamp}"
   snapshot_name = "hp-honeypot-${local.stamp}"
   snapshot_regions = [var.region]
+  # Packer's default is 6 minutes; DigitalOcean sometimes takes longer to start a droplet.
+  state_timeout = "15m"
   # The "hp-build" tag gets a cloud firewall from Terraform: SSH in from home only, internet out.
   tags          = ["hp-build"]
   monitoring    = false
