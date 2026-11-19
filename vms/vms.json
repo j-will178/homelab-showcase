@@ -2,8 +2,8 @@
   "images": {
     "debian-13-genericcloud": {
       "base_url": "https://cloud.debian.org/images/cloud/trixie/",
-      "file": "",
-      "sha512": ""
+      "file": "debian-13-genericcloud-amd64-20261116-2664.raw",
+      "sha512": "b0cdd4e07c3579618bc39f4247570519568b54ff21e581bec46b79173785b3a0a28ac13a110d4dce8c3b45e2b7b6b2e342967915025331b80af7a213fc327fa1"
     }
   },
   "vms": {
@@ -20,7 +20,9 @@
       "path": "C:\\Hyper-V",
       "role": "cloud-ops",
       "admin_user": "labadmin",
-      "admin_ssh_keys": []
+      "admin_ssh_keys": [
+        "ssh-ed25519 AAAA... you@laptop"
+      ]
     }
   }
 }
