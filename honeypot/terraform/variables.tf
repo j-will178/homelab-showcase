@@ -22,7 +22,7 @@ variable "mode" {
       "public":    the internet. Health snapshot keeps only a few fixed facts.
   EOT
   type        = string
-  default     = "lab"
+  default     = "public"
   validation {
     condition     = contains(["lab-debug", "lab", "public"], var.mode)
     error_message = "mode must be \"lab-debug\", \"lab\" or \"public\"."

@@ -68,6 +68,21 @@ class FeedTest(unittest.TestCase):
         g.ingest({"id": "b", "lines": session_lines(time.time() - 30, "s2")})
         self.assertEqual(g.view()["summary"]["sessions"], 2)
 
+    def test_reset_token_wipes_once(self):
+        f = honeypot.HoneypotFeed(self.db, simulate=False, reset_token="lab-1")
+        f.ingest({"id": "a", "lines": session_lines(time.time() - 300)})       # new db: token recorded, nothing wiped
+        self.assertIsNone(f.reset_note)
+        g = honeypot.HoneypotFeed(self.db, reset_token="lab-1")               # restart, same token: kept
+        self.assertEqual((g.view()["summary"]["sessions"], g.reset_note), (1, None))
+        h = honeypot.HoneypotFeed(self.db, reset_token="go-live")              # new token in git: wiped once
+        v = h.view()
+        self.assertEqual((v["source"], v["simulated"], v["summary"]["sessions"]), ("cowrie", False, 0))
+        self.assertIn("1 sessions removed", h.reset_note)
+        self.assertEqual(h.patterns_view()["shell_sessions"], 0)
+        h.ingest({"id": "b", "lines": session_lines(time.time() - 30, "s9")})
+        k = honeypot.HoneypotFeed(self.db, reset_token="go-live")              # restart after: not wiped again
+        self.assertEqual((k.view()["summary"]["sessions"], k.reset_note), (1, None))
+
     def test_hostile_and_bad_input(self):
         f = honeypot.HoneypotFeed(self.db, simulate=False)
         out = f.ingest({"id": "x", "lines": ["not json", "{}", '{"eventid": "cowrie.login.failed"}',

@@ -145,13 +145,13 @@ Planned:
 ## Open items
 
 - [ ] Kopia cloud backup: enabled; run the one-time secrets script on homeshare, then test a restore after the first upload
-- [ ] Cloud honeypot (DigitalOcean, code in [`honeypot/`](../honeypot/), lab side running on cloud-ops; running in mode `lab` (dress rehearsal): Cowrie reachable from home only, minimal health pulled with the log): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs pulled by cloud-ops into the dashboard's Honeypot screen (simulated data until then). Network paths once created:
+- [x] Cloud honeypot, **live** since 2026-11-19 (DigitalOcean TOR1, code in [`honeypot/`](../honeypot/), lab side on cloud-ops; mode `public`): Cowrie VM with no outbound access, rebuilt weekly from a Packer image by Terraform on cloud-ops; reached only through a bastion (inbound SSH from the home IP only); logs and a minimal health snapshot pulled by cloud-ops into the dashboard's Honeypot screen. Network paths:
 
   | From | To | Port | Allowed by |
   |---|---|---|---|
   | cloud-ops (home IP) | bastion reserved IP | TCP 2222 | bastion cloud firewall |
   | bastion | honeypot | TCP 47022 | honeypot cloud firewall (bastion tag only) |
-  | internet (home IP only in modes `lab-debug` and `lab`) | honeypot | TCP 22, 23 (Cowrie) | honeypot cloud firewall |
+  | internet (home IP only in modes `lab-debug` and `lab`; anyone in `public`, now) | honeypot | TCP 22, 23 (Cowrie) | honeypot cloud firewall |
   | honeypot | anywhere | none | no outbound rules |
   | cloud-ops (home IP) | Packer build droplet (during a weekly build only) | TCP 22 | `hp-build` cloud firewall (home IP only) |
 - [ ] UPS graceful shutdown

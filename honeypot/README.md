@@ -2,7 +2,7 @@
 
 A disposable Cowrie honeypot in the cloud, reached only through a bastion, with no outbound access. Its logs feed the dashboard's **Honeypot** and **Attack patterns** screens (simulated until this is running).
 
-> **Status:** running in mode **`lab`**, the dress rehearsal: Cowrie reachable from the home IP only, reporting exactly what it will in production. The `lab-debug` checklist below passed on 2026-11-19. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
+> **Status:** **live** since 2026-11-19 (mode **`public`**): Cowrie is reachable from the internet. The `lab-debug` checklist and the `lab` dress rehearsal below passed first. The lab side is on [cloud-ops](../cloud-ops/) (verified Terraform/Packer, weekly rebuild, log puller); it creates the droplets once you run `hp-secrets` there.
 
 ```mermaid
 flowchart LR
@@ -56,8 +56,8 @@ flowchart LR
 | Mode | Who can reach Cowrie (22/23) | Health snapshot pulled with the log | For |
 |---|---|---|---|
 | **`lab-debug`** | home IP only | full diagnostics: Cowrie's service log, errors since boot, cloud-init, nftables ruleset, listening sockets, failed units | building, breaking and fixing the pipeline |
-| **`lab`** (now) | home IP only | the same minimal facts as production | the dress rehearsal: exactly what will run live, only you can reach it |
-| **`public`** | anyone | minimal: Cowrie up/down and restarts, ports listening, 22/23 redirects, nftables, cloud-init, failed units, disk | the real thing |
+| **`lab`** | home IP only | the same minimal facts as production | the dress rehearsal: exactly what will run live, only you can reach it |
+| **`public`** (now) | anyone | minimal: Cowrie up/down and restarts, ports listening, 22/23 redirects, nftables, cloud-init, failed units, disk | the real thing |
 
 The minimal facts stay in every mode so a dead Cowrie raises a chip instead of looking like a quiet day. The snapshot is written by root on the honeypot every minute (`hp-health`) and read by the collector key (`hp-log-read health`): the collector gets no new access, and nothing leaves the honeypot on its own. The Honeypot screen shows the mode and health as chips; **D** (or clicking a health chip) opens the diagnostics view, which also shows the last lines of a failed rebuild.
 
@@ -78,6 +78,8 @@ Changing stage, forwards or back, is a **one-line PR** changing that default. De
 **Then `mode = "lab"`:** repeat 1–4. Same results, with the diagnostics view showing only the minimal facts.
 
 **Go-live PR:** `mode = "public"`, plus a one-time reset of the dashboard's honeypot history, so the test sessions (and the home IP on the map) don't stay in the 30-day data.
+
+**History reset:** `dashboard/honeypot-reset` holds a token. When it changes in git, the dashboard wipes its stored honeypot history once on the next start, and records the token so restarts don't wipe again. The live feed stays live: the screen goes empty, not simulated. To reset again later (e.g. after testing in a lab mode), put a new token there.
 
 ## How a rebuild works
 

@@ -123,7 +123,29 @@ class HoneypotDB:
                     protocol TEXT, client TEXT, logins INTEGER, shell INTEGER, username TEXT, password TEXT,
                     commands TEXT, downloads TEXT);
                 CREATE INDEX IF NOT EXISTS sessions_start ON sessions (start);
+                CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
             """)
+
+    def get_meta(self, key):
+        with self.lock:
+            row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key, value):
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+            self.db.commit()
+
+    def wipe(self):
+        """Delete all honeypot history (events and sessions). Returns the number of sessions removed."""
+        with self.lock:
+            n = self.db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            self.db.execute("DELETE FROM events")
+            self.db.execute("DELETE FROM sessions")
+            self.db.commit()
+            self._cache.clear()
+            self._patterns = (0, None, None)
+        return n
 
     def _commit(self):
         if not self.batch:
@@ -705,8 +727,9 @@ class HoneypotFeed:
     STATUS_KEYS = ("state", "error", "pulled_at", "mode", "honeypot_image", "last_rebuild_at", "last_apply_at",
                    "rebuild_result", "rebuild_error", "rebuild_error_tail", "running")
 
-    def __init__(self, db_path=None, geo=None, simulate=True):
-        self.db_path, self.geo = db_path, geo
+    def __init__(self, db_path=None, geo=None, simulate=True, reset_token=None):
+        self.db_path, self.geo, self.reset_token = db_path, geo, reset_token
+        self.reset_note = None
         self.lock = threading.Lock()
         self.status, self.status_at = None, None
         self.seen = OrderedDict()           # batch ids already ingested (a retried post isn't counted twice)
@@ -722,6 +745,13 @@ class HoneypotFeed:
 
     def _real(self):
         db = HoneypotDB(self.db_path)
+        # One-time history reset from git (dashboard/honeypot-reset): a new token wipes the stored
+        # history once, e.g. the lab test sessions when going public. A new database just records it.
+        if self.reset_token and db.get_meta("reset") != self.reset_token:
+            n = db.wipe()
+            db.set_meta("reset", self.reset_token)
+            if n:
+                self.reset_note = f"honeypot history reset ({self.reset_token}): {n} sessions removed"
         store = HoneypotStore(source="cowrie", geo=self.geo, db=db)
         store.replay(db.events_since(time.time() - store.window))
         return store

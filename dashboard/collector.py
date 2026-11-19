@@ -472,9 +472,14 @@ def main():
     # Honeypot: simulated Cowrie events until cloud-ops posts the first real ones to
     # /api/honeypot/ingest, then the real feed for good (30 days in state/honeypot.db).
     # Simulated history lives in RAM only, so it can never mix with the real history on disk.
-    honeypot_feed = honeypot.HoneypotFeed(str(Path(state_dir) / "honeypot.db") if state_dir else None, geo=geo)
+    reset_file = Path(__file__).with_name("honeypot-reset")
+    reset_token = reset_file.read_text().strip() if reset_file.exists() else None
+    honeypot_feed = honeypot.HoneypotFeed(str(Path(state_dir) / "honeypot.db") if state_dir else None, geo=geo,
+                                          reset_token=reset_token or None)
     honeypot_feed.start_background()
     log.info("honeypot: %s", "real data (honeypot.db)" if honeypot_feed.live else "simulated until cloud-ops sends real events")
+    if honeypot_feed.reset_note:
+        log.info(honeypot_feed.reset_note)
 
     broker = Broker()
     if not args.demo:
