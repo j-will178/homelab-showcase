@@ -28,6 +28,7 @@
     const redir = Object.entries(h.redirects || {}).filter(([, v]) => v === false).map(([k]) => k);
     if (redir.length) p.push(['lv-crit', `redirect missing: ${redir.join(', ')}`]);
     if (h.nftables && h.nftables !== 'active') p.push(['lv-crit', `nftables ${h.nftables}`]);
+    if (h.sandbox_kills?.count) p.push(['lv-crit', `sandbox killed ${h.sandbox_kills.last || 'a process'}${h.sandbox_kills.count > 1 ? ` · ${h.sandbox_kills.count}×` : ''}`]);
     if (h.failed_units?.length) p.push(['lv-warn', `${h.failed_units.length} failed unit${h.failed_units.length > 1 ? 's' : ''}`]);
     if (h.cloud_init && !['done', 'disabled'].includes(h.cloud_init)) p.push(['lv-warn', `cloud-init ${h.cloud_init}`]);
     if (h.disk_pct >= 85) p.push(['lv-warn', `disk ${h.disk_pct}%`]);
@@ -58,7 +59,8 @@
 
   // ---------- diagnostics view ----------
   const DEBUG_TITLES = { cowrie_journal: 'Cowrie service log', boot_errors: 'Errors since boot', cloud_init: 'cloud-init',
-                         nftables: 'nftables ruleset', sockets: 'Listening sockets', failed_units: 'Failed units' };
+                         nftables: 'nftables ruleset', sockets: 'Listening sockets', failed_units: 'Failed units',
+                         sandbox_kills: 'Sandbox kills (kernel audit, type=1326)' };
   function diagHtml(f) {
     if (!f) return '<p class="muted">cloud-ops hasn\'t reported yet.</p>';
     const h = f.health, parts = [];
@@ -74,6 +76,7 @@
         ['Redirect 22 / 23', ['22', '23'].map(p => yn(h.redirects?.[p])).join(' / ')],
         ['nftables', esc(h.nftables || '—')], ['cloud-init', esc(h.cloud_init || '—')],
         ['Failed units', esc((h.failed_units || []).join(', ') || 'none')],
+        ['Sandbox kills since boot', h.sandbox_kills?.count ? esc(`${h.sandbox_kills.count} · last: ${h.sandbox_kills.last || '?'}`) : 'none'],
         ['Disk', h.disk_pct != null ? `${h.disk_pct}%` : '—'], ['Up', h.uptime_s != null ? ago(h.uptime_s) : '—'],
         ['Cowrie log', h.log_bytes != null ? `${num(h.log_bytes)} bytes` : '—'],
         ['Snapshot', h.t ? `${ago(Math.max(0, now() - h.t))} ago` : '—'],

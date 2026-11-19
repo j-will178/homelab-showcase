@@ -43,6 +43,9 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @mount @debug @cpu-emulation @obsolete @raw-io @reboot @swap
+# Twisted calls setfsuid/setfsgid at startup on Debian 13 (killed with SIGSYS otherwise: syscall 122).
+# Harmless here: without CAP_SETUID (bounding set is empty) they can only pick IDs it already has.
+SystemCallFilter=setfsuid setfsgid
 UMask=0027
 MemoryMax=600M
 TasksMax=256

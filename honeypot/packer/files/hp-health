@@ -71,6 +71,25 @@ def cloud_init():
     return m.group(1) if m else "unknown"
 
 
+# x86_64 numbers for the calls a sandboxed service is most likely to trip over
+SYSCALLS = {105: "setuid", 106: "setgid", 113: "setreuid", 114: "setregid", 116: "setgroups", 117: "setresuid",
+            119: "setresgid", 122: "setfsuid", 123: "setfsgid", 160: "setrlimit", 302: "prlimit64", 203: "sched_setaffinity",
+            141: "setpriority", 251: "ioprio_set", 101: "ptrace", 165: "mount", 169: "reboot", 92: "chown", 93: "fchown",
+            94: "lchown", 260: "fchownat", 135: "personality", 310: "process_vm_readv"}
+
+
+def sandbox_kills():
+    """Processes killed by a systemd system-call filter since boot (kernel audit type=1326)."""
+    _, out = run("journalctl", "-k", "-b", "--no-pager", "-o", "cat", "-g", "type=1326")
+    kills = []
+    for l in out.splitlines():
+        m = re.search(r'comm="([^"]{0,32})".*?syscall=(\d+)', l)
+        if m:
+            n = int(m.group(2))
+            kills.append(f"{m.group(1)}: {SYSCALLS.get(n, 'syscall')} ({n})")
+    return {"count": len(kills), "last": kills[-1] if kills else None}, out
+
+
 def failed_units():
     _, out = run("systemctl", "list-units", "--failed", "--plain", "--no-legend")
     return [l.split()[0] for l in out.splitlines() if l.strip()][:10]
@@ -88,6 +107,7 @@ def snapshot():
          "cloud_init": cloud_init(), "failed_units": failed_units(),
          "disk_pct": round(100 * disk.used / disk.total), "uptime_s": uptime,
          "log_bytes": os.path.getsize(COWRIE_LOG) if os.path.exists(COWRIE_LOG) else None}
+    h["sandbox_kills"], kill_lines = sandbox_kills()
     if m == "lab-debug":
         h["debug"] = {
             "cowrie_journal": tail(run("journalctl", "-u", "cowrie", "-n", "60", "--no-pager", "-o", "short-iso")[1]),
@@ -96,6 +116,7 @@ def snapshot():
             "nftables": tail(run("nft", "list", "ruleset")[1]),
             "sockets": tail(run("ss", "-ltnp")[1]),
             "failed_units": tail(run("systemctl", "--failed", "--no-pager")[1]),
+            "sandbox_kills": tail(kill_lines),
         }
     return h
 

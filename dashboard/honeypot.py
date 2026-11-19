@@ -660,7 +660,7 @@ class Simulator:
                 self.store.add(ev, where=geo if i == 0 else None)
 
 
-HEALTH_DEBUG_KEYS = ("cowrie_journal", "boot_errors", "cloud_init", "nftables", "sockets", "failed_units")
+HEALTH_DEBUG_KEYS = ("cowrie_journal", "boot_errors", "cloud_init", "nftables", "sockets", "failed_units", "sandbox_kills")
 
 
 def clean_health(h):
@@ -686,6 +686,8 @@ def clean_health(h):
            "redirects": flags(h.get("redirects"), ("22", "23")), "cloud_init": s(h.get("cloud_init")),
            "failed_units": [s(u, 80) for u in units if isinstance(u, str)][:10],
            "disk_pct": i(h.get("disk_pct")), "uptime_s": i(h.get("uptime_s")), "log_bytes": i(h.get("log_bytes"))}
+    sk = h.get("sandbox_kills") if isinstance(h.get("sandbox_kills"), dict) else {}
+    out["sandbox_kills"] = {"count": i(sk.get("count")), "last": s(sk.get("last"), 80)}
     dbg = h.get("debug")
     if isinstance(dbg, dict):
         out["debug"] = {k: dbg[k][-8000:] for k in HEALTH_DEBUG_KEYS if isinstance(dbg.get(k), str)}
