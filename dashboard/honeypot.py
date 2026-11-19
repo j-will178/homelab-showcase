@@ -213,12 +213,14 @@ class HoneypotDB:
             fp = a["fingerprint"]
             g = groups.get(fp)
             if g is None:
-                g = groups[fp] = {"fp": fp, "a": a, "cmds": cmds, "n30": 0, "n24": 0, "ips": set(), "cc": Counter(),
+                g = groups[fp] = {"fp": fp, "a": a, "cmds": cmds, "n30": 0, "n24": 0, "ips": {}, "cc": Counter(),
                                   "names": {}, "first": start, "last": start, "daily": [0] * 14, "creds": Counter(),
                                   "hosts": Counter()}
             g["n30"] += 1
             g["n24"] += start >= now - 86400
-            g["ips"].add(ip)
+            src = g["ips"].setdefault(ip, {"n": 0, "cc": cc, "country": country, "last": start})
+            src["n"] += 1
+            src["last"] = start
             if cc:
                 g["cc"][cc] += 1
                 g["names"][cc] = country or cc
@@ -240,13 +242,16 @@ class HoneypotDB:
             a = g["a"]
             out.append({
                 "fp": g["fp"], "label": a["label"], "tags": a["tags"], "summary": a["summary"],
-                "script": rules.normalize_all(json.loads(g["cmds"]))[:14],
+                "script": rules.normalize_all(json.loads(g["cmds"]))[:SCRIPT_MAX],
                 "n_24h": g["n24"], "n_30d": g["n30"], "ips": len(g["ips"]), "countries": len(g["cc"]),
                 "first_age_s": round(now - g["first"]), "last_age_s": round(now - g["last"]),
                 "daily": g["daily"], "spread": spread(g),
                 "creds": [[k, v] for k, v in g["creds"].most_common(3)],
                 "top_countries": [[c, g["names"][c], n] for c, n in g["cc"].most_common(3)],
                 "hosts": [[k, v] for k, v in g["hosts"].most_common(4)],
+                # Where it came from, per address: [ip, cc, country, sessions, last seen], busiest first.
+                "sources": [[ip, s["cc"], s["country"], s["n"], round(now - s["last"])] for ip, s in
+                            sorted(g["ips"].items(), key=lambda kv: (-kv[1]["n"], -kv[1]["last"]))[:SOURCES_MAX]],
             })
         out.sort(key=lambda p: (-p["n_24h"], -p["n_30d"]))
         new = sorted([p for p in out if p["first_age_s"] < 86400], key=lambda p: p["first_age_s"])
@@ -260,6 +265,10 @@ class HoneypotDB:
                  for p in out}
         self._patterns = (now, view, index)
         return view, index
+
+
+SCRIPT_MAX = 200    # commands of a pattern's script sent to the screen (it scrolls)
+SOURCES_MAX = 50    # source IPs per pattern sent to the screen
 
 
 class HoneypotStore:

@@ -83,6 +83,8 @@
     wakeTimer = setTimeout(() => nav.classList.remove('awake'), 4000);
   }
   document.addEventListener('mousemove', wake);
+  // A screen being used (clicks, scrolling) asks to stay: restart the rotation countdown.
+  document.addEventListener('screenhold', () => { S.shownAt = performance.now(); updateState(); });
 
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;

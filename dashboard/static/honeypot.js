@@ -221,7 +221,7 @@
     $('hpShells').innerHTML = (data.shells || []).map(s => `
       <article class="shell" title="${esc(s.commands.map(c => '$ ' + c).join('\n'))}">
         <header><b>${esc(s.username)} / ${esc(s.password)}</b>
-          <span>${flag(s.cc)} ${esc(s.city || s.ip)} · ${esc(s.protocol)} · ${ago(s.age_s + since())} ago${s.duration_s != null ? ` · ${s.duration_s}s` : s.open ? ' · still connected' : ''}</span></header>
+          <span>${flag(s.cc)} ${s.city ? `${esc(s.city)} · ` : ''}<code class="ip">${esc(s.ip)}</code> · ${esc(s.protocol)} · ${ago(s.age_s + since())} ago${s.duration_s != null ? ` · ${s.duration_s}s` : s.open ? ' · still connected' : ''}</span></header>
         <div class="tags">${tagChips(s.tags)}<span class="ncmd">${s.commands.length + s.more} command${s.commands.length + s.more === 1 ? '' : 's'}</span></div>
         <p class="sum">${esc(String(s.summary || '').replace(/^Got in as .*?\. /, ''))}</p>
         <div class="pline">${patternLine(s)}</div>

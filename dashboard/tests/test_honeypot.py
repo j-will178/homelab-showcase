@@ -161,6 +161,20 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(shell["pattern"]["n_30d"], 1)
         self.assertEqual(shell["label"], "Recon")
 
+    def test_pattern_sources_and_full_script(self):
+        now = time.time()
+        st = honeypot.HoneypotStore(db=honeypot.HoneypotDB(":memory:"))
+        long_script = [f"echo step{i}" for i in range(40)]           # longer than the old 14-command cut
+        self._session(st, "a1", now - 7200, "203.0.113.5", long_script)
+        self._session(st, "a2", now - 600, "203.0.113.5", long_script)   # same IP again, later
+        self._session(st, "a3", now - 3600, "198.51.100.7", long_script)
+        p = st.patterns_view(now=now)["patterns"][0]
+        self.assertEqual((len(p["script"]), p["ips"]), (40, 2))
+        ip, cc, country, n, last = p["sources"][0]                      # busiest first
+        self.assertEqual((ip, cc, country, n), ("203.0.113.5", "NL", "Netherlands", 2))
+        self.assertAlmostEqual(last, 600, delta=15)                      # its most recent session
+        self.assertEqual(p["sources"][1][:4], ["198.51.100.7", "NL", "Netherlands", 1])
+
     def test_purge_keeps_30_days(self):
         now = time.time()
         db = honeypot.HoneypotDB(":memory:")

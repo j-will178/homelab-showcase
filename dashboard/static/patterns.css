@@ -9,7 +9,10 @@
 #patterns .none { color: var(--muted); font-size: 12px; }
 #patterns .dim { color: var(--muted); }
 
-#patTable { grid-area: table; padding: 0; }
+#patTable { grid-area: table; padding: 0; overflow-y: auto; }
+#patTable thead th { position: sticky; top: 0; background: var(--panel-solid, #0b1118); z-index: 1; }
+#patTable tbody tr { cursor: pointer; }
+#patTable tbody tr:hover td { background: rgba(255, 255, 255, 0.035); }
 #patTable table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 #patTable th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
   padding: 10px 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -22,12 +25,16 @@
 #patTable .peek { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; align-self: center; }
 #patTable tr.on td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 #patTable tr.on td.rk { color: var(--accent); }
+#patTable tr.pinned td { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#patTable tr.pinned td.rk::before { content: "📌"; font-size: 10px; margin-right: 2px; }
 #patTable .chip { font-size: 10.5px; padding: 1px 7px; }
 .spark { width: 84px; height: 18px; display: block; }
 .spark rect { fill: var(--accent); opacity: 0.45; }
 .spark rect.today { opacity: 1; }
 
-#patSpot { grid-area: spot; display: flex; flex-direction: column; }
+#patSpot { grid-area: spot; display: flex; flex-direction: column; overflow-y: auto; }
+#patSpot .resume { background: none; border: 1px solid var(--line); color: var(--accent); border-radius: 6px; font-size: 11px; padding: 2px 9px; cursor: pointer; margin-left: auto; margin-right: 10px; }
+#patSpot .resume:hover { border-color: var(--accent); }
 #patSpot .spot-head { display: flex; justify-content: space-between; align-items: baseline; }
 #patSpot .fp { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 #patSpot h3 { margin: 2px 0 6px; font-size: 18px; font-weight: 600; }
@@ -39,13 +46,23 @@
 #patSpot .facts .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 #patSpot .facts .v { font-family: var(--mono); font-size: 15px; font-weight: 600; }
 #patSpot pre { flex-shrink: 0; margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
-  background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 13.5em; overflow: hidden; }
+  background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 12em; overflow-y: auto; }
 #patSpot .ps { color: var(--accent); }
 #patSpot .cols { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px; }
 #patSpot .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; }
 #patSpot .row code { font-family: var(--mono); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #patSpot .row code.bad { color: var(--crit); }
 #patSpot .row span:last-child { font-family: var(--mono); color: var(--muted); }
+#patSpot .srcs { max-height: calc(5 * 1.6em + 8px); overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+#patSpot .srcs .row { padding: 1px 0; }
+#patSpot .more { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+#patSpot h4 .muted span { white-space: nowrap; }
+#patSpot .srcs code { font-family: var(--mono); font-size: 11.5px; }
+#patNew li[data-fp] { cursor: pointer; border-radius: 4px; }
+#patNew li[data-fp]:hover { background: rgba(255, 255, 255, 0.035); }
+#patNew li.pinned { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+/* thin scrollbars in the scrolling boxes */
+#patTable, #patSpot, #patSpot pre, #patSpot .srcs { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
 
 #patBottom { grid-area: bottom; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 #patNew { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
@@ -74,7 +91,8 @@
   #patSpot .facts { gap: 6px; }
   #patSpot .facts div { padding: 5px 8px; }
   #patSpot .facts .v { font-size: 13px; }
-  #patSpot pre { max-height: calc(6 * 1.5em + 18px); }
+  #patSpot pre { max-height: calc(7 * 1.5em + 18px); }
+  #patSpot .srcs { max-height: calc(4 * 1.6em + 8px); }
   #patSpot .cols { grid-template-columns: 1fr 1fr; }
   #patSpot .cols > div:nth-child(3) { grid-column: span 2; }
 }

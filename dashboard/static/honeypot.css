@@ -109,3 +109,4 @@
 #hpDiagBody table.facts td { padding: 3px 0; font-family: var(--mono, monospace); }
 #hpDiagBody .ok { color: var(--ok, #3fb950); }
 #hpDiagBody .bad { color: var(--crit, #f85149); }
+#hpSessions code.ip, .hpcard code.ip { font-family: var(--mono); font-size: 0.95em; }
