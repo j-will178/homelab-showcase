@@ -3,7 +3,7 @@
 # so everything it needs is baked in here. Run by cloud-ops weekly (see README).
 #
 #   export DIGITALOCEAN_TOKEN=...      # never in git
-#   packer init . && packer build -var region=nyc3 .
+#   packer init . && packer build -var region=tor1 .   (hp-rebuild passes REGION from ../settings.env)
 
 packer {
   required_version = ">= 1.15.0"
@@ -18,7 +18,7 @@ packer {
 
 variable "region" {
   type    = string
-  default = "nyc3"
+  default = "tor1"   # hp-rebuild always passes REGION from ../settings.env
 }
 
 variable "base_image" {

@@ -1,7 +1,7 @@
 variable "region" {
   description = "DigitalOcean region for both droplets (and the Packer image)."
   type        = string
-  default     = "nyc3"
+  default     = "tor1"   # hp-rebuild always passes REGION from ../settings.env
 }
 
 variable "home_cidrs" {

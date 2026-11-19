@@ -73,6 +73,8 @@ Going live, or back, is a **one-line PR** changing that default, applied by the 
 
 ## How a rebuild works
 
+**Region:** `settings.env` (`REGION=tor1`), passed to both Packer and Terraform. It must offer both droplet sizes; on 2026-11-18 only blr1, fra1, lon1, sfo2 and tor1 did (no New York region). Changing it rebuilds everything there on the next Deploy all.
+
 Automated on cloud-ops by [`hp-rebuild`](../cloud-ops/honeypot/hp-rebuild) (weekly, plus a daily `--refresh`):
 
 1. Looks up the home IP (two services must agree) and stages this folder's code into `/var/lib/honeypot`.

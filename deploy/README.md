@@ -24,7 +24,7 @@ The same script runs on more than one Linux host. `/etc/homelab/role` says what 
 | Role | Host | Deploys when these change | What |
 |---|---|---|---|
 | `dashboard` | optiplex-management | `dashboard/` | The steps above |
-| `cloud-ops` | cloud-ops (VM) | `cloud-ops/`, `honeypot/`, `dashboard/agents/metrics_agent.py` | Metrics agent, nftables, sshd config, unattended-upgrades (checked with `nft -c` and `sshd -t` first; snapshot and rollback like the dashboard); signature-verified Terraform/Packer, honeypot puller and rebuild timers. A merge touching `honeypot/packer/` starts a rebuild, `honeypot/terraform/` a `terraform apply`. See [`cloud-ops/`](../cloud-ops/) |
+| `cloud-ops` | cloud-ops (VM) | `cloud-ops/`, `honeypot/`, `dashboard/agents/metrics_agent.py` | Metrics agent, nftables, sshd config, unattended-upgrades (checked with `nft -c` and `sshd -t` first; snapshot and rollback like the dashboard); signature-verified Terraform/Packer, honeypot puller and rebuild timers. A merge touching `honeypot/packer/` or `honeypot/settings.env` starts a rebuild, `honeypot/terraform/` a `terraform apply`. See [`cloud-ops/`](../cloud-ops/) |
 
 An unknown role fails the deploy instead of guessing. cloud-ops doesn't use the manual setup below: its first boot (see [`vms/`](../vms/)) makes the deploy key, clones and installs the timer.
 

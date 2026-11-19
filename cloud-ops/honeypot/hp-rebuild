@@ -53,6 +53,10 @@ python3 -c 'import ipaddress,sys; ip=ipaddress.ip_address(sys.argv[1]); sys.exit
   || fail "home IP '$a' is not a public IPv4 address"
 HOME_CIDR="$a/32"
 
+# Region: one setting in git for both Packer and Terraform.
+REGION="$(sed -n 's/^REGION=\([a-z0-9]*\)$/\1/p' "$SRC/settings.env")"
+[[ "$REGION" =~ ^[a-z]{3}[0-9]$ ]] || fail "REGION in honeypot/settings.env is missing or invalid ('$REGION')"
+
 # Stage the code from git; keep state, lock file and provider cache.
 rsync -a --delete --exclude 'terraform.tfstate*' --exclude '.terraform/' --exclude '.terraform.lock.hcl' \
   --exclude '*.auto.tfvars.json' "$SRC/terraform/" "$TF/"
@@ -64,12 +68,12 @@ current="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("
 
 # tfvars IMAGE HOSTKEY: secrets go in a root-only file, never on a command line (ps shows those).
 tfvars() {
-  python3 - "$TF/run.auto.tfvars.json" "$HOME_CIDR" "$1" "$ETC/lab_ed25519.pub" "$ETC/admin.pub" "$KEYS/bastion_host" "$2" <<'PY'
+  python3 - "$TF/run.auto.tfvars.json" "$REGION" "$HOME_CIDR" "$1" "$ETC/lab_ed25519.pub" "$ETC/admin.pub" "$KEYS/bastion_host" "$2" <<'PY'
 import json, os, sys
-out, cidr, image, lab, admin, bhk, hhk = sys.argv[1:]
+out, region, cidr, image, lab, admin, bhk, hhk = sys.argv[1:]
 rd = lambda p: open(p).read().strip()
 key = lambda p: {"private": rd(p) + "\n", "public": rd(p + ".pub")} if os.path.exists(p) else {"private": "none", "public": "none"}
-v = {"home_cidrs": [cidr], "honeypot_image": image, "lab_ssh_public_key": rd(lab), "admin_ssh_public_key": rd(admin),
+v = {"region": region, "home_cidrs": [cidr], "honeypot_image": image, "lab_ssh_public_key": rd(lab), "admin_ssh_public_key": rd(admin),
      "bastion_host_key": key(bhk), "honeypot_host_key": key(hhk)}
 fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 with os.fdopen(fd, "w") as f: json.dump(v, f)
@@ -89,9 +93,9 @@ if [[ "$MODE" == full ]]; then
   # 2. New image.
   cd "$PK"
   packer init . >/dev/null
-  packer validate -var "region=nyc3" .
+  packer validate -var "region=$REGION" .
   rm -f manifest.json
-  packer build -color=false -var "region=nyc3" .
+  packer build -color=false -var "region=$REGION" .
   image="$(python3 -c 'import json,sys; b=json.load(open("manifest.json"))["builds"][-1]; print(b["custom_data"]["snapshot_name"] if b.get("custom_data",{}).get("snapshot_name") else "")' 2>/dev/null || true)"
   if [[ -z "$image" ]]; then   # older manifests: look the snapshot up by the build's id
     id="$(python3 -c 'import json; print(json.load(open("manifest.json"))["builds"][-1]["artifact_id"].split(":")[-1])')"
