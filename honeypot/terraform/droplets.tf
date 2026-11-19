@@ -56,9 +56,9 @@ resource "digitalocean_droplet" "honeypot" {
     mode             = var.mode
   })
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  # No create_before_destroy: the old honeypot is deleted first (cloud-ops pulls its log one last
+  # time before), then the new one is created. At most 2 droplets at a time, so the account's
+  # droplet limit fits; the honeypot is offline for a minute or two per rebuild.
 }
 
 data "digitalocean_image" "honeypot" {

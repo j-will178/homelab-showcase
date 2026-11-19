@@ -88,8 +88,15 @@ Automated on cloud-ops by [`hp-rebuild`](../cloud-ops/honeypot/hp-rebuild) (week
 1. Looks up the home IP (two services must agree) and stages this folder's code into `/var/lib/honeypot`.
 2. `terraform apply` of the `hp-build` tag and firewall first, so Packer's build droplet is covered from boot.
 3. `packer build`: snapshot `hp-honeypot-<stamp>`.
-4. A new honeypot host key, then `terraform apply`: only the honeypot is replaced (new image, new key), and the firewalls follow the home IP. The new honeypot is up before the old one is destroyed.
-5. Publishes the addresses and pinned host keys for the puller, deletes snapshots older than the last two.
+4. A new honeypot host key, then `terraform plan`. Only the honeypot is replaced (new image, new key), and the firewalls follow the home IP.
+5. If the plan deletes the honeypot, the puller is stopped first: stopping it pulls the old honeypot's log one last time. Then `terraform apply` deletes the old honeypot **before** creating the new one, so it's offline for a minute or two.
+6. Publishes the addresses and pinned host keys for the puller, deletes snapshots older than the last two.
+
+**Droplet limit:** the account allows 3 droplets. Deleting before creating keeps a rebuild at 2 at most, plus Packer's build droplet earlier in the run. Before Packer runs, and before every apply, the plan is checked against the limit. If it doesn't fit, the rebuild stops before changing anything and names the droplets in use, for example a leftover one to delete.
+
+**Back-to-back merges:** a merge deployed while a rebuild runs leaves a request (`/var/lib/honeypot/request-full` or `request-refresh`). The running rebuild picks it up when it ends and runs again with the newly installed code, so nothing is silently skipped.
+
+**Taking it down:** `sudo hp-rebuild --destroy` on cloud-ops deletes everything on DigitalOcean (the Packer images stay) and pauses: the timers and merges do nothing, and the dashboard says *paused*. `sudo hp-rebuild --resume` builds it again. The bastion then gets a new reserved IP.
 
 `--refresh` skips 2–4's image and key steps: just `terraform apply` with the current image.
 

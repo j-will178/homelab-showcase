@@ -38,7 +38,8 @@
     if (age > 180) return chip('lv-crit', `cloud-ops not reporting · ${ago(age)} ago`);
     const out = [];
     const msg = { 'waiting-secrets': 'honeypot: one-time secrets not set up (sudo hp-secrets on cloud-ops)',
-                  'waiting-build': 'honeypot: waiting for its first build' };
+                  'waiting-build': 'honeypot: waiting for its first build',
+                  paused: 'honeypot deleted (paused): sudo hp-rebuild --resume on cloud-ops' };
     if (msg[f.state]) out.push(chip('lv-unknown', msg[f.state]));
     else if (f.state === 'error') out.push(`<span class="chip lv-crit" title="${esc(f.error || '')}" data-diag="1" role="button" tabindex="0">pull failing: ${esc((f.error || '').slice(0, 60))}</span>`);
     else if (f.pulled_at) out.push(chip('', `pulled ${ago(Math.max(0, now() - f.pulled_at))} ago`));

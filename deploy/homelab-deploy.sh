@@ -453,10 +453,13 @@ deploy_cloudops_honeypot() {
   systemctl is-active --quiet hp-pull.service || { log "cloud-ops: hp-pull not running"; return 1; }
   # Infrastructure changes in git reach DigitalOcean now, not at the next timer (once set up).
   if [[ -s /etc/honeypot/do_token ]]; then
+    # The request file makes sure it runs even if a rebuild is already running (it runs right after).
     if touches "$changed" "honeypot/packer/" || touches "$changed" "honeypot/settings.env"; then
-      log "cloud-ops: honeypot image changed: starting a rebuild"; systemctl start --no-block hp-rebuild.service
+      log "cloud-ops: honeypot image changed: requesting a rebuild"
+      : > /var/lib/honeypot/request-full; systemctl start --no-block hp-rebuild.service
     elif touches "$changed" "honeypot/terraform/"; then
-      log "cloud-ops: honeypot infrastructure changed: starting terraform apply"; systemctl start --no-block hp-refresh.service
+      log "cloud-ops: honeypot infrastructure changed: requesting terraform apply"
+      : > /var/lib/honeypot/request-refresh; systemctl start --no-block hp-refresh.service
     fi
   fi
 }

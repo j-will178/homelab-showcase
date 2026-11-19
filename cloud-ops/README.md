@@ -24,7 +24,7 @@ A small Debian 13 VM on **backup-compute** (Hyper-V). It holds everything that t
 | What | Runs as | When |
 |---|---|---|
 | **Terraform and Packer** (`/usr/local/bin`), versions pinned in `tools.env` | installed by the deploy | when `tools.env` changes |
-| `hp-rebuild` (`hp-rebuild.service`): new Packer image + `terraform apply`. Only the honeypot is replaced (new one up before the old one goes); old snapshots deleted, the last two kept | root | weekly, Sun ~05:30 (`hp-rebuild.timer`), and after a merge that changes `honeypot/packer/` |
+| `hp-rebuild` (`hp-rebuild.service`): new Packer image + `terraform apply`. Only the honeypot is replaced: its log is pulled one last time, then it's deleted and the new one created (2 droplets at most). Old snapshots deleted, the last two kept. Checks the droplet limit before creating anything | root | weekly, Sun ~05:30 (`hp-rebuild.timer`), and after a merge that changes `honeypot/packer/` |
 | `hp-rebuild --refresh` (`hp-refresh.service`): `terraform apply` with the current image. Follows a changed home IP into the cloud firewalls; applies a changed `mode` | root | daily ~06:15 (`hp-refresh.timer`), and after a merge that changes `honeypot/terraform/` |
 | `hp-pull` (`hp-pull.service`): reads Cowrie's log through the bastion every 30 s and posts it to the dashboard (`/api/honeypot/ingest`) with this side's status | unprivileged system user `hp-pull`, sandboxed; gets only the lab key and agent token | always |
 | `hp-secrets`: the one-time step | you, with sudo | once |
@@ -88,4 +88,6 @@ sudo hp-pull ssh hp-honeypot status    # the log reader on the honeypot, through
 sudo cat /var/lib/honeypot/status.json
 ```
 
-To take everything down on DigitalOcean: `sudo systemctl disable --now hp-rebuild.timer hp-refresh.timer hp-pull`, then `cd /var/lib/honeypot/terraform && sudo -E terraform destroy` with `DIGITALOCEAN_TOKEN` set from `/etc/honeypot/do_token`.
+To take everything down on DigitalOcean: `sudo hp-rebuild --destroy`. It pulls the log one last time, deletes the droplets, firewalls, VPCs and reserved IP (the Packer images stay), and pauses the timers and merge-triggered rebuilds. `sudo hp-rebuild --resume` builds everything again. The bastion then has a new reserved IP.
+
+A merge that changes the honeypot while a rebuild is running isn't lost: the running rebuild finishes, then runs again with the new code.

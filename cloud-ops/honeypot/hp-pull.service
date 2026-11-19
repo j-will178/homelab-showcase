@@ -7,6 +7,9 @@ After=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/hp-pull
+# On stop (hp-rebuild stops it before deleting a honeypot): pull the log one last time.
+ExecStop=/usr/local/bin/hp-pull --once
+TimeoutStopSec=120
 # A real system account (created by the deploy), not DynamicUser: ssh refuses to run as a uid it
 # can't look up, and Debian's cloud image has no libnss-systemd to resolve dynamic users.
 User=hp-pull

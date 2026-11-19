@@ -1,26 +1,45 @@
 #!/bin/bash
-# hp-rebuild [--refresh]: build and (re)deploy the honeypot on DigitalOcean.
-#   full (weekly, hp-rebuild.timer): new Packer image + new honeypot host key, terraform apply
-#        (only the honeypot is replaced; the new one is up before the old one goes).
-#   --refresh (daily, hp-refresh.timer, and after a merge that changes honeypot/terraform):
-#        terraform apply with the current image, e.g. to follow a changed home IP or mode.
+# hp-rebuild: build and (re)deploy the honeypot on DigitalOcean.
+#   (no option)  full: new Packer image + new honeypot host key, terraform apply. Weekly
+#                (hp-rebuild.timer), and after a merge that changes the image.
+#   --refresh    terraform apply with the current image, e.g. to follow a changed home IP or mode.
+#                Daily (hp-refresh.timer), and after a merge that changes honeypot/terraform.
+#   --destroy    delete everything on DigitalOcean (droplets, firewalls, VPCs, reserved IP) and pause:
+#                the timers and merges do nothing until --resume. The Packer images are kept.
+#   --resume     end the pause and start a full rebuild (in hp-rebuild.service).
+# A replaced honeypot is deleted BEFORE its replacement is created: at most 2 droplets at a time
+# (the account limit is low), at the cost of a minute or two offline per rebuild. Its log is pulled
+# one last time first. Requests that arrive while a rebuild runs (deploy-requested-*) are run
+# right after it, with the code installed by then.
 # Code comes from the repo checkout (/opt/homelab/honeypot); state, keys and work dirs live in
 # /var/lib/honeypot (root only). Result in /var/lib/honeypot/status.json, shown on the dashboard.
 set -euo pipefail
-MODE=full; [[ "${1:-}" == "--refresh" ]] && MODE=refresh
 SRC=/opt/homelab/honeypot ETC=/etc/honeypot LIB=/var/lib/honeypot
-KEYS=$LIB/keys TF=$LIB/terraform PK=$LIB/packer STATUS=$LIB/status.json
+KEYS=$LIB/keys TF=$LIB/terraform PK=$LIB/packer STATUS=$LIB/status.json PAUSED=$LIB/paused
+case "${1:-}" in
+  "") MODE=full ;; --refresh) MODE=refresh ;; --destroy) MODE=destroy ;;
+  --resume)
+    rm -f "$PAUSED"; : > "$LIB/request-full"
+    systemctl start --no-block hp-rebuild.service
+    echo "hp-rebuild: resumed; full rebuild started (journalctl -fu hp-rebuild)"; exit 0 ;;
+  *) echo "usage: hp-rebuild [--refresh | --destroy | --resume]" >&2; exit 2 ;;
+esac
 umask 077
 install -d -m 0711 "$LIB"        # traversable: the puller reads status.json and endpoints.json
 install -d -m 0700 "$KEYS" "$TF" "$PK"
 
 exec 9>/run/hp-rebuild.lock
-flock -n 9 || { echo "hp-rebuild: another rebuild is running"; exit 0; }
+flock -n 9 || { echo "hp-rebuild: another rebuild is running; this request runs right after it"; exit 0; }
+
+# This run satisfies the requests made so far; newer ones are picked up at the end (next_run).
+if [[ "$MODE" == full ]]; then rm -f "$LIB/request-full" "$LIB/request-refresh"
+elif [[ "$MODE" == refresh ]]; then rm -f "$LIB/request-refresh"; fi
 
 # Everything this run prints also goes to a file, so a failure can show its last lines on the
 # dashboard (the journal keeps the full output as before).
 RUNLOG="$LIB/last-run.log"
 : > "$RUNLOG"; chmod 0600 "$RUNLOG"
+exec 3>&1 4>&2
 exec > >(tee -a "$RUNLOG") 2>&1
 
 # status KEY=VALUE...: merge into status.json (python: no jq on the box)
@@ -38,14 +57,65 @@ with open(tmp, "w") as f: json.dump(st, f)
 os.chmod(tmp, 0o644); os.replace(tmp, path)
 PY
 }
+PULLER_STOPPED=0
+# drain_puller: before the honeypot is deleted, stop the puller; its ExecStop pulls the log one
+# last time. restart_puller (on every exit) starts it again.
+drain_puller() {
+  if systemctl is-active --quiet hp-pull.service; then
+    echo "hp-rebuild: final pull of the honeypot's log, then stopping the puller"
+    systemctl stop hp-pull.service || true
+    PULLER_STOPPED=1
+  fi
+}
+restart_puller() { (( PULLER_STOPPED )) && systemctl start hp-pull.service || true; PULLER_STOPPED=0; }
+
+# next_run: requests that came in during this run (a merge deployed meanwhile) run now, with the
+# code installed by then. Otherwise they'd be lost: systemd ignores a start of a running service.
+next_run() {
+  local next=""
+  [[ -f "$LIB/request-refresh" ]] && next="--refresh"
+  [[ -f "$LIB/request-full" ]] && next="full"
+  [[ -z "$next" || -f "$PAUSED" ]] && return 0
+  echo "hp-rebuild: another run was requested meanwhile: starting it now"
+  exec 1>&3 2>&4 9>&-
+  if [[ "$next" == full ]]; then exec "$0"; else exec "$0" --refresh; fi
+}
+
 fail() {
   trap - ERR
   sleep 1   # let tee catch up
-  local t; t="$(grep -v '^hp-rebuild: FAILED' "$RUNLOG" | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^[[:space:]]*$' | tail -n 15 | cut -c1-300)"
+  local t; t="$( { grep -v '^hp-rebuild: FAILED' "$RUNLOG" | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^[[:space:]]*$' | tail -n 15 | cut -c1-300; } || true)"   # nothing printed yet is fine
   status result=failed "error=$*" "error_tail=$t" running=
-  echo "hp-rebuild: FAILED: $*" >&2; exit 1
+  echo "hp-rebuild: FAILED: $*" >&2
+  restart_puller
+  next_run
+  exit 1
 }
 trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
+
+# api PATH [curl args]: DigitalOcean API with the token on stdin (never on a command line)
+api() { local path="$1"; shift; curl -fsS --proto '=https' -K - "$@" "https://api.digitalocean.com/v2/$path" <<<"header = \"Authorization: Bearer $DIGITALOCEAN_TOKEN\""; }
+
+# droplet_room NEED WHAT: fail with a clear message unless NEED more droplets fit the account limit
+droplet_room() {
+  local need="$1" what="$2" info
+  info="$(python3 - "$need" <(api account) <(api 'droplets?per_page=200') <<'PY'
+import json, sys
+need = int(sys.argv[1]); lim = json.load(open(sys.argv[2]))["account"]["droplet_limit"]
+ds = json.load(open(sys.argv[3]))["droplets"]
+print(f"{'ok' if len(ds) + need <= lim else 'full'} {len(ds)} {lim} " + ",".join(d["name"] for d in ds))
+PY
+)"
+  [[ -n "$info" ]] || fail "could not read the droplet limit from the DigitalOcean API"
+  read -r ok used lim names <<<"$info"
+  [[ "$ok" == ok ]] || fail "$what needs $need more droplet(s), but $used of the account's limit of $lim are in use (${names:-none}). Remove a leftover droplet or ask DigitalOcean for a higher limit."
+}
+
+if [[ "$MODE" != destroy && -f "$PAUSED" ]]; then
+  rm -f "$LIB/request-full" "$LIB/request-refresh"
+  status result=paused "error=destroyed with hp-rebuild --destroy; start again with sudo hp-rebuild --resume" running=
+  echo "hp-rebuild: paused (sudo hp-rebuild --resume to build again)"; exit 0
+fi
 
 for f in "$ETC/do_token" "$ETC/admin.pub" "$ETC/lab_ed25519.pub" "$KEYS/bastion_host"; do
   [[ -s "$f" ]] || { status result=waiting "error=one-time secrets not set up (sudo hp-secrets)"; echo "hp-rebuild: $f missing; run sudo hp-secrets"; exit 0; }
@@ -96,13 +166,27 @@ cd "$TF"
 terraform init -input=false -no-color >/dev/null
 terraform validate -no-color
 
+if [[ "$MODE" == destroy ]]; then
+  tfvars "${current:-none}" "$KEYS/honeypot_host"
+  drain_puller
+  terraform destroy -input=false -no-color -auto-approve
+  rm -f "$LIB/endpoints.json" "$LIB/request-full" "$LIB/request-refresh"
+  : > "$PAUSED"
+  status result=paused "error=destroyed with hp-rebuild --destroy; start again with sudo hp-rebuild --resume" \
+    error_tail= running= honeypot_image= mode= last_destroy_at=@now
+  restart_puller
+  echo "hp-rebuild: everything on DigitalOcean deleted (Packer images kept); paused until sudo hp-rebuild --resume"
+  exit 0
+fi
+
 image="$current" hostkey="$KEYS/honeypot_host"
 if [[ "$MODE" == full ]]; then
   # 1. The build droplet's firewall first (SSH from home only), so it's covered from boot.
   tfvars "${current:-none}" "$hostkey"
   terraform apply -input=false -no-color -auto-approve \
     -target=digitalocean_tag.build -target=digitalocean_firewall.build
-  # 2. New image.
+  # 2. New image. Packer's build droplet needs a free slot under the account's droplet limit.
+  droplet_room 1 "Packer's build droplet"
   cd "$PK"
   packer init . >/dev/null
   packer validate -var "region=$REGION" .
@@ -123,7 +207,25 @@ if [[ "$MODE" == full ]]; then
 fi
 
 tfvars "$image" "$hostkey"
-terraform apply -input=false -no-color -auto-approve
+terraform plan -input=false -no-color -out=tfplan >/dev/null
+# What will this apply do to droplets? Replacements delete first, so the peak is the larger of
+# "now" and "after"; new droplets (first build) need free slots.
+read -r creates deletes hp_goes < <(terraform show -json tfplan | python3 -c '
+import json, sys
+c = d = 0; hp = False
+for r in json.load(sys.stdin).get("resource_changes", []):
+    if r["type"] != "digitalocean_droplet": continue
+    a = r["change"]["actions"]
+    c += "create" in a; d += "delete" in a
+    hp = hp or (r["name"] == "honeypot" and "delete" in a)
+print(c, d, int(hp))')
+[[ "$creates" =~ ^[0-9]+$ && "$deletes" =~ ^[0-9]+$ ]] || fail "could not read terraform's plan"
+echo "hp-rebuild: plan: $creates droplet(s) created, $deletes deleted"
+(( creates > deletes )) && droplet_room $((creates - deletes)) "terraform apply"
+(( hp_goes )) && drain_puller
+terraform apply -input=false -no-color -auto-approve tfplan
+rm -f tfplan
+restart_puller
 if [[ "$hostkey" == *.next ]]; then
   mv -f "$KEYS/honeypot_host.next" "$KEYS/honeypot_host"; mv -f "$KEYS/honeypot_host.next.pub" "$KEYS/honeypot_host.pub"
   tfvars "$image" "$KEYS/honeypot_host"     # same content, final path
@@ -157,3 +259,4 @@ for x in sorted(s, key=lambda x: x["name"])[:-2]: print(x["id"], x["name"])' \
 fi
 status result=ok error= error_tail= running= "honeypot_image=$image" "mode=$hpmode" exposure= last_apply_at=@now
 echo "hp-rebuild: $MODE done: $image ($hpmode)"
+next_run

@@ -20,10 +20,13 @@ failure) has the same id and is ignored by the dashboard. A rebuilt
 honeypot has a new host key, which starts a new cursor (its log starts empty).
 
     hp-pull                  the service loop
+    hp-pull --once           one pull, then exit: the service's ExecStop, so stopping it (hp-rebuild
+                             does, before deleting a honeypot) pulls the log one last time
     hp-pull ssh ARGS...      as root, for testing: ssh with the same config and the lab key,
                              e.g.  sudo hp-pull ssh hp-honeypot read
 """
 
+import fcntl
 import hashlib
 import json
 import os
@@ -169,7 +172,8 @@ def cycle(state_dir, key, token, cursor, last_ok):
     ep = read_json(ENDPOINTS)
     if not ep:
         rb = read_json(REBUILD)
-        waiting = "waiting-build" if rb and rb.get("result") not in (None, "waiting") else "waiting-secrets"
+        waiting = ("paused" if rb and rb.get("result") == "paused" else
+                   "waiting-build" if rb and rb.get("result") not in (None, "waiting") else "waiting-secrets")
         post(token, {"status": status(waiting)})
         return cursor, last_ok
     cfg, kh = os.path.join(state_dir, "ssh_config"), os.path.join(state_dir, "known_hosts")
@@ -215,15 +219,22 @@ def main():
     key = os.path.join(creds, "lab_key")
     with open(os.path.join(creds, "agent_token")) as f:
         token = f.read().strip()
-    cursor = read_json(os.path.join(state_dir, "cursor.json")) or {}
+    once = "--once" in sys.argv[1:]
+    lock = open(os.path.join(state_dir, "lock"), "w")
     last_ok = None
-    log("hp-pull started")
+    log("hp-pull: final pull" if once else "hp-pull started")
     while True:
         t0 = time.time()
+        fcntl.flock(lock, fcntl.LOCK_EX)           # never two pulls at once (loop + ExecStop)
         try:
-            cursor, last_ok = cycle(state_dir, key, token, cursor, last_ok)
+            cursor = read_json(os.path.join(state_dir, "cursor.json")) or {}   # the other process may have moved it
+            _, last_ok = cycle(state_dir, key, token, cursor, last_ok)
         except (urllib.error.URLError, OSError, ValueError) as e:
             log(f"dashboard not reachable: {e}")      # cursor not advanced: retried next time
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        if once:
+            return
         time.sleep(max(1, EVERY - (time.time() - t0)))
 
 
