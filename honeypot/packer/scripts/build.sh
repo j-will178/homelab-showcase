@@ -13,7 +13,9 @@ systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 # Whatever is already running (an apt-daily run, an agent installer) finishes first; it's not
 # killed, which could leave dpkg half-done. Up to 10 minutes.
 for _ in $(seq 120); do
-  pgrep -x 'apt|apt-get|dpkg|unattended-upgr|unattended-upgrade' >/dev/null || break
+  # Not by name for unattended-upgrades: its always-running helper unattended-upgrade-shutdown
+  # shows up with the same 15-character name, "unattended-upgr". Match the real run's command line.
+  pgrep -x 'apt|apt-get|dpkg' >/dev/null || pgrep -f '^/usr/bin/python3 /usr/bin/unattended-upgrade( |$)' >/dev/null || break
   sleep 5
 done
 apt() { apt-get -o DPkg::Lock::Timeout=600 -o Acquire::Retries=3 "$@"; }
