@@ -40,6 +40,9 @@ for f in "$ETC/do_token" "$ETC/admin.pub" "$ETC/lab_ed25519.pub" "$KEYS/bastion_
 done
 DIGITALOCEAN_TOKEN="$(cat "$ETC/do_token")"
 export DIGITALOCEAN_TOKEN CHECKPOINT_DISABLE=1 TF_IN_AUTOMATION=1 TF_INPUT=0 PACKER_NO_COLOR=1
+# systemd gives services no $HOME; Packer needs one for its config and plugins. Keep both in /var/lib.
+export HOME="${HOME:-/root}" PACKER_CONFIG_DIR="$LIB/packer-config" PACKER_PLUGIN_PATH="$LIB/packer-config/plugins"
+install -d -m 0700 "$PACKER_CONFIG_DIR"
 status "running=$MODE" running_since=@now
 
 # Home public IP: two independent lookups must agree (it goes into the cloud firewalls).
