@@ -69,11 +69,16 @@ sshd -t -f /etc/ssh/sshd_config -o HostKey=/etc/ssh/ssh_host_ed25519_key 2>&1 ||
 
 # ---- DigitalOcean image noise: two units that only ever fail here, hiding real errors ----
 # vpc-peering.service runs a DigitalOcean script that isn't shipped (no VPC peering here), and the
-# systemd ssh generator looks for a VM socket (AF_VSOCK) DigitalOcean doesn't provide. Masking a
-# generator: a /dev/null symlink of the same name in /etc/systemd/system-generators.
-systemctl mask vpc-peering.service
+# systemd ssh generator looks for a VM socket (AF_VSOCK) DigitalOcean doesn't provide.
+# DigitalOcean ships its unit in /etc/systemd/system, where `systemctl mask` refuses to overwrite it:
+# remove it, then mask (a later write to it lands on /dev/null). A generator is masked with a
+# /dev/null symlink of the same name in /etc/systemd/system-generators.
+# Cosmetic, so none of this may fail the build.
+systemctl disable vpc-peering.service 2>/dev/null || true
+rm -f /etc/systemd/system/vpc-peering.service
+systemctl mask vpc-peering.service || echo "note: could not mask vpc-peering.service (cosmetic)"
 install -d -m 755 /etc/systemd/system-generators
-ln -sfn /dev/null /etc/systemd/system-generators/systemd-ssh-generator
+ln -sfn /dev/null /etc/systemd/system-generators/systemd-ssh-generator || echo "note: could not mask systemd-ssh-generator (cosmetic)"
 
 # ---- cloud-init: host key and authorized keys come from Terraform at first boot ----
 cat > /etc/cloud/cloud.cfg.d/99-honeypot.cfg <<'CFG'
