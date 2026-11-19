@@ -10,7 +10,7 @@ packages: [nftables, unattended-upgrades]
 ssh_pwauth: false
 disable_root: true
 ssh_deletekeys: true
-ssh_genkeytypes: []
+ssh_genkeytypes: [ed25519]   # the injected key exists, so none are generated ([] fails the schema)
 ssh_keys:
   ed25519_private: |
     ${indent(4, trimspace(host_key_private))}

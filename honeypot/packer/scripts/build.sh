@@ -47,6 +47,9 @@ install -d -o root -g cowrie -m 750 /etc/cowrie
 install -o root -g cowrie -m 640 $F/cowrie.cfg $F/userdb.txt /etc/cowrie/
 install -d -o cowrie -g cowrie -m 750 /var/lib/cowrie /var/lib/cowrie/log /var/lib/cowrie/state /var/lib/cowrie/downloads
 chmod g+s /var/lib/cowrie/log            # new log files stay group cowrie, readable by collector
+# Cowrie 3's launcher refuses to start unless ./etc/cowrie.cfg exists in its working directory
+# ("cowrie is not initialized in this directory"); the config lives in /etc/cowrie.
+ln -sfn /etc/cowrie /var/lib/cowrie/etc
 install -m 644 $F/cowrie.service /etc/systemd/system/cowrie.service
 systemctl enable cowrie.service
 
@@ -69,7 +72,7 @@ cat > /etc/cloud/cloud.cfg.d/99-honeypot.cfg <<'CFG'
 disable_root: true
 ssh_pwauth: false
 ssh_deletekeys: true
-ssh_genkeytypes: []
+ssh_genkeytypes: [ed25519]
 CFG
 
 # ---- leave nothing of the build behind ----

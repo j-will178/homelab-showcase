@@ -21,6 +21,8 @@
     if (h.missing) return [['lv-unknown', 'no health snapshot yet']];
     const p = [];
     if (h.cowrie?.active && h.cowrie.active !== 'active') p.push(['lv-crit', `Cowrie ${h.cowrie.active}${h.cowrie.restarts ? ` · ${h.cowrie.restarts} restarts` : ''}`]);
+    // "active" can be a moment between crashes: a crash loop shows in the restart count.
+    else if (h.cowrie?.restarts >= 3) p.push(['lv-crit', `Cowrie crash-looping · ${h.cowrie.restarts} restarts`]);
     const ports = Object.entries(h.listening || {}).filter(([, v]) => v === false).map(([k]) => k);
     if (ports.length) p.push(['lv-crit', `not listening: ${ports.join(', ')}`]);
     const redir = Object.entries(h.redirects || {}).filter(([, v]) => v === false).map(([k]) => k);
