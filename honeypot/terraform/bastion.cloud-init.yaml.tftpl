@@ -56,6 +56,12 @@ write_files:
           PermitOpen *:47022
           PermitTTY no
           ForceCommand /usr/sbin/nologin
+
+      # Your admin key: a normal shell here, and the hop to the honeypot's admin SSH (ProxyJump),
+      # but no forwarding anywhere else.
+      Match User hpadmin
+          AllowTcpForwarding local
+          PermitOpen *:47022
   - path: /etc/nftables.conf
     permissions: "0644"
     content: |
