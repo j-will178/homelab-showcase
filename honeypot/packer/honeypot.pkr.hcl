@@ -1,6 +1,6 @@
 # Builds the honeypot image: patched Debian 13 + Cowrie (pinned, hash-checked) + hardening.
 # Built on a short-lived droplet that DOES have internet access; the honeypot itself never does,
-# so everything it needs is baked in here. Run by optiplex-management weekly (see README).
+# so everything it needs is baked in here. Run by cloud-ops weekly (see README).
 #
 #   export DIGITALOCEAN_TOKEN=...      # never in git
 #   packer init . && packer build -var region=nyc3 .

@@ -14,7 +14,7 @@ output "honeypot_address" {
 }
 
 output "ssh_config" {
-  description = "For ~/.ssh/config on optiplex-management (the puller uses these host names)."
+  description = "For ~/.ssh/config on cloud-ops (the puller uses these host names)."
   value       = <<-EOT
     Host hp-bastion
         HostName ${digitalocean_reserved_ip.bastion.ip_address}

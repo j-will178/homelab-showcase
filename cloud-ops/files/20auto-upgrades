@@ -1,0 +1,4 @@
+// Security updates every day (unattended-upgrades). When a kernel update needs a reboot, it
+// happens at 04:45 (see 52unattended-reboot). Rebooting this VM never affects its host.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";

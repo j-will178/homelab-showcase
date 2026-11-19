@@ -207,7 +207,7 @@ def syslog_listener(port, pipeline):
 
 
 def make_handler(broker, page_config, smart_store=None, agent_token=None, metrics_store=None, deploy=None, cred_store=None,
-                 honeypot_store=None):
+                 honeypot_store=None, deploy_keys=None):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(STATIC_DIR), **kw)
@@ -229,7 +229,9 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(200, metrics_store.tasks_view() if metrics_store else {"hosts": []})
             if path == "/api/deploy":
                 view = metrics_store.deploy_view() if metrics_store else {"hosts": []}
-                return self._json(200, dict(view, request=deploy.info() if deploy else None))
+                reporting = {h["host"] for h in view["hosts"] if h.get("reported")}
+                return self._json(200, dict(view, request=deploy.info() if deploy else None,
+                                            pending_keys=deploy_keys.view(reporting) if deploy_keys else []))
             if path in ("/api/creds/key", "/api/creds/secret"):
                 return self._creds_get(path.rsplit("/", 1)[1])
             if path == "/api/honeypot":
@@ -274,6 +276,20 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
             log.info("creds: %s for %s from %s (%s)", kind, body["id"], body["host"], self.client_address[0])
             return self._json(200, out)
 
+        def _deploykey_post(self):
+            # A new VM's public deploy key, to show on the Deployments screen (see PendingDeployKeys).
+            if not deploy_keys or not self._authorized("deploykeys"):
+                return None if deploy_keys else self._json(404, {"error": "not found"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 4096:
+                    raise ValueError("body must be 1..4096 bytes")
+                out = deploy_keys.put(json.loads(self.rfile.read(length).decode("utf-8-sig")))
+            except (ValueError, UnicodeDecodeError) as e:
+                return self._json(400, {"error": str(e)})
+            log.info("deploykeys: %s is waiting for its GitHub deploy key (from %s)", out["host"], self.client_address[0])
+            return self._json(200, out)
+
         def end_headers(self):
             # Static files: always revalidate, so a deploy shows up on the next
             # reload instead of whenever the browser's cache decides to expire.
@@ -287,6 +303,8 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._deploy()
             if path in ("/api/creds/key", "/api/creds/secret"):
                 return self._creds_post(path.rsplit("/", 1)[1])
+            if path == "/api/deploykeys":
+                return self._deploykey_post()
             stores = {"/api/smart": ("smart", smart_store), "/api/metrics": ("metrics", metrics_store)}
             kind, store = stores.get(path, (None, None))
             if store is None:
@@ -457,7 +475,7 @@ def main():
         threading.Thread(target=report, daemon=True).start()
 
     server = ThreadingHTTPServer((args.bind, args.http_port), make_handler(broker, page_config, smart_store, agent_token, metrics_store, deploy, cred_store,
-                                                                         honeypot_store))
+                                                                         honeypot_store, metrics.PendingDeployKeys()))
     server.daemon_threads = True
     log.info("dashboard at http://%s:%d/  (mode: %s)", socket.gethostname(), args.http_port, page_config["mode"])
     server.serve_forever()

@@ -1,0 +1,97 @@
+#cloud-config
+# First boot of a VM built by Sync-HyperV.ps1 from vms.json. The double-at placeholders are filled in on the host;
+# the result sits on a small seed disk (label CIDATA) next to the VM, readable by SYSTEM and
+# Administrators only, because it carries the agent token.
+#
+# After this, the VM is an ordinary lab host: it posts its new read-only deploy key to the
+# dashboard (Deployments screen), waits until that key is added on GitHub, clones the repo and
+# runs homelab-deploy, which installs everything else from git (cloud-ops/).
+
+hostname: @@NAME@@
+fqdn: @@NAME@@.home.arpa
+prefer_fqdn_over_hostname: false
+manage_etc_hosts: true
+ssh_pwauth: false
+disable_root: true
+
+users:
+  - name: @@ADMIN_USER@@
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+@@ADMIN_KEYS@@
+
+package_update: true
+package_upgrade: true
+packages: [git, rsync, curl, python3, nftables, unattended-upgrades]
+
+write_files:
+  - path: /etc/homelab/role
+    permissions: "0644"
+    content: |
+      @@ROLE@@
+  - path: /etc/rack-agent/token
+    permissions: "0600"
+    content: |
+      @@AGENT_TOKEN@@
+  # GitHub's host key, copied from the host's own agent (it already pulls from GitHub over SSH),
+  # so the VM never has to trust whatever answers on first connect.
+  - path: /etc/homelab/github_known_hosts
+    permissions: "0644"
+    content: |
+@@GITHUB_KNOWN_HOSTS@@
+  - path: /root/.ssh/config
+    permissions: "0600"
+    content: |
+      Host github-homelab
+          HostName github.com
+          User git
+          IdentityFile /root/.ssh/homelab_deploy
+          IdentitiesOnly yes
+          UserKnownHostsFile /etc/homelab/github_known_hosts
+          StrictHostKeyChecking yes
+  - path: /usr/local/sbin/homelab-bootstrap
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Join the lab: deploy key -> dashboard -> (you add it on GitHub) -> clone -> homelab-deploy.
+      set -u
+      KEY=/root/.ssh/homelab_deploy
+      REPO=git@github-homelab:@@REPO@@.git
+      API=@@DASHBOARD@@/api/deploykeys
+      [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -C "@@NAME@@-deploy" -f "$KEY"
+      until git ls-remote "$REPO" HEAD >/dev/null 2>&1; do
+        body=$(printf '{"host":"%s","public_key":"%s"}' "@@NAME@@" "$(cat "$KEY.pub")")
+        curl -fsS -m 10 -o /dev/null -H "Authorization: Bearer $(cat /etc/rack-agent/token)" \
+             -H 'Content-Type: application/json' -d "$body" "$API" \
+          && echo "homelab-bootstrap: deploy key posted to the dashboard; waiting for it on GitHub" \
+          || echo "homelab-bootstrap: dashboard not reachable yet, retrying"
+        sleep 60
+      done
+      [ -d /opt/homelab/.git ] || git clone --quiet "$REPO" /opt/homelab || exit 1
+      cp /opt/homelab/deploy/homelab-deploy.service /opt/homelab/deploy/homelab-deploy.timer /etc/systemd/system/
+      systemctl daemon-reload
+      systemctl start homelab-deploy.service
+      systemctl enable --now homelab-deploy.timer
+      systemctl disable homelab-bootstrap.service
+      echo "homelab-bootstrap: joined the lab"
+  - path: /etc/systemd/system/homelab-bootstrap.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Join the homelab (deploy key, clone, first deploy)
+      After=network-online.target cloud-final.service
+      Wants=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/sbin/homelab-bootstrap
+      Restart=on-failure
+      RestartSec=60
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, --no-block, homelab-bootstrap.service]

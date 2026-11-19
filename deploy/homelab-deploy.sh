@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # homelab-deploy: pull j-will178/homelab and deploy whatever changed.
 #
-# Runs on the OptiPlex from a systemd timer (see homelab-deploy.timer).
+# Runs on the Linux lab hosts from a systemd timer (see homelab-deploy.timer). What a host
+# deploys depends on its role, from /etc/homelab/role:
+#   dashboard (default, no file)  optiplex-management: the rack dashboard + its local agents
+#   cloud-ops                     the cloud-ops VM: metrics agent + host baseline (cloud-ops/)
 # The checkout at $REPO_DIR is a read-only mirror of origin/main: never edit
 # files there, local changes are discarded on every deploy.
 #
@@ -18,6 +21,14 @@ main() {
   local BRANCH="${BRANCH:-main}"
   local STATE_DIR="${STATE_DIR:-/var/lib/homelab-deploy}"
   local LOCK_FILE="${LOCK_FILE:-/run/homelab-deploy.lock}"
+  ROLE=""
+  [[ -r /etc/homelab/role ]] && ROLE="$(tr -d '[:space:]' < /etc/homelab/role)"
+  ROLE="${ROLE:-dashboard}"
+  case "$ROLE" in
+    dashboard|cloud-ops) ;;
+    *) log "unknown role '$ROLE' in /etc/homelab/role (expected dashboard or cloud-ops)"; return 1 ;;
+  esac
+  export ROLE
 
   mkdir -p "$STATE_DIR"
 
@@ -46,7 +57,7 @@ main() {
   old="$(cat "$STATE_DIR/deployed-rev" 2>/dev/null || true)"
 
   if [[ "$new" == "$old" ]]; then
-    install_local_agent || log "dashboard: WARNING local agent check failed"   # self-heal, cheap
+    ensure_local_agent || log "$ROLE: WARNING local agent check failed"   # self-heal, cheap
     write_status ok "up to date"
     return 0
   fi
@@ -81,8 +92,11 @@ apply() {
   fi
 
   local failed=0
-  if touches "$changed" "dashboard/"; then
+  if [[ "$ROLE" == "dashboard" ]] && touches "$changed" "dashboard/"; then
     run_step dashboard "$changed" || failed=1
+  fi
+  if [[ "$ROLE" == "cloud-ops" ]] && { touches "$changed" "cloud-ops/" || touches "$changed" "dashboard/agents/metrics_agent.py"; }; then
+    run_step cloudops "$changed" || failed=1
   fi
 
   # Add future projects here: write deploy_<name> and rollback_<name>, then
@@ -95,7 +109,7 @@ apply() {
     return 1
   fi
 
-  install_local_agent || log "dashboard: WARNING local agent setup failed"
+  ensure_local_agent || log "$ROLE: WARNING local agent setup failed"
 
   rm -f "$STATE_DIR/failed-rev"
   echo "$new" > "$STATE_DIR/deployed-rev"
@@ -332,6 +346,90 @@ rollback_dashboard() {
     return 1
   fi
   rm -f "$STATE_DIR/noise-map-stopped"
+}
+
+# ---- cloud-ops (the VM on backup-compute; see cloud-ops/README.md) ----------
+CO_SRC_FILES=(rack-metrics-agent.service nftables.conf 50-cloud-ops-sshd.conf 20auto-upgrades 52unattended-reboot)
+CO_AGENT="/opt/rack-agent/metrics_agent.py"
+CO_TOKEN="/etc/rack-agent/token"
+declare -A CO_DEST=(
+  [rack-metrics-agent.service]=/etc/systemd/system/rack-metrics-agent.service
+  [nftables.conf]=/etc/nftables.conf
+  [50-cloud-ops-sshd.conf]=/etc/ssh/sshd_config.d/50-cloud-ops.conf
+  [20auto-upgrades]=/etc/apt/apt.conf.d/20auto-upgrades
+  [52unattended-reboot]=/etc/apt/apt.conf.d/52unattended-reboot
+)
+
+deploy_cloudops() {
+  local src="$REPO_DIR/cloud-ops/files" prev="$STATE_DIR/cloudops.prev" f dst missing=()
+
+  rm -rf "$prev"
+  # 1. Checks before touching anything live.
+  python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$REPO_DIR/dashboard/agents/metrics_agent.py" \
+    || { log "cloud-ops: metrics_agent.py has a syntax error, not deploying"; return 1; }
+  [[ -s "$CO_TOKEN" ]] || { log "cloud-ops: $CO_TOKEN missing (one-time setup step, see cloud-ops/README.md)"; return 1; }
+  for p in nftables unattended-upgrades; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
+  if (( ${#missing[@]} )); then
+    log "cloud-ops: installing ${missing[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q "${missing[@]}" >/dev/null || return 1
+  fi
+  nft -c -f "$src/nftables.conf" || { log "cloud-ops: nftables.conf invalid, not deploying"; return 1; }
+
+  # 2. Snapshot what's live now (for rollback), then install.
+  mkdir -p "$prev" || return 1
+  for f in "${CO_SRC_FILES[@]}"; do
+    dst="${CO_DEST[$f]}"
+    [[ -f "$dst" ]] && { cp -p "$dst" "$prev/$f" || return 1; }
+  done
+  [[ -f "$CO_AGENT" ]] && { cp -p "$CO_AGENT" "$prev/metrics_agent.py" || return 1; }
+  touch "$prev/.snapshot-complete"
+
+  install -d -m 0755 /opt/rack-agent || return 1
+  install -m 0644 "$REPO_DIR/dashboard/agents/metrics_agent.py" "$CO_AGENT" || return 1
+  for f in "${CO_SRC_FILES[@]}"; do
+    install -m 0644 "$src/$f" "${CO_DEST[$f]}" || return 1
+  done
+
+  # 3. Apply: sshd only if its config is valid (never lock ourselves out), firewall, agent.
+  sshd -t || { log "cloud-ops: sshd config invalid"; return 1; }
+  systemctl reload ssh || return 1
+  systemctl enable --quiet nftables.service || return 1
+  systemctl restart nftables.service || return 1
+  systemctl enable --quiet unattended-upgrades.service || return 1
+  systemctl daemon-reload || return 1
+  systemctl enable --quiet rack-metrics-agent.service || return 1
+  systemctl restart rack-metrics-agent.service || return 1
+  sleep 3
+  systemctl is-active --quiet rack-metrics-agent.service || { log "cloud-ops: metrics agent not running"; return 1; }
+  log "cloud-ops: healthy"
+}
+
+rollback_cloudops() {
+  local prev="$STATE_DIR/cloudops.prev" f
+  [[ -f "$prev/.snapshot-complete" ]] || { log "cloud-ops: failed before anything live changed, nothing to roll back"; return 0; }
+  for f in "${CO_SRC_FILES[@]}"; do
+    if [[ -f "$prev/$f" ]]; then install -m 0644 "$prev/$f" "${CO_DEST[$f]}" || return 1
+    else rm -f "${CO_DEST[$f]}"; fi
+  done
+  [[ -f "$prev/metrics_agent.py" ]] && install -m 0644 "$prev/metrics_agent.py" "$CO_AGENT"
+  systemctl daemon-reload
+  sshd -t && systemctl reload ssh
+  [[ -f /etc/nftables.conf ]] && systemctl restart nftables.service
+  systemctl restart rack-metrics-agent.service 2>/dev/null || true
+  log "cloud-ops: rolled back"
+}
+
+# ensure_local_agent: this host's agents installed and running (cheap; run on every check).
+ensure_local_agent() {
+  case "$ROLE" in
+    dashboard) install_local_agent ;;
+    cloud-ops)
+      [[ -f /etc/systemd/system/rack-metrics-agent.service ]] || return 0   # not deployed yet
+      systemctl is-active --quiet rack-metrics-agent.service || {
+        log "cloud-ops: metrics agent was not running, starting it"
+        systemctl start rack-metrics-agent.service
+      } ;;
+  esac
 }
 
 # wait_healthy URL [UNIT]: URL answers 2xx (and UNIT, if given, is active) within ~15 s

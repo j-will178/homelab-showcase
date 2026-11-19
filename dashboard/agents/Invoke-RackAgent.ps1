@@ -40,6 +40,10 @@ $Managed = @('Send-SmartReport.ps1', 'Send-Metrics.ps1', 'Invoke-RackAgent.ps1')
 $BackupsDir = Join-Path $env:ProgramData 'HomelabBackups'
 $BackupsManaged = @('Invoke-Mirror.ps1', 'Sync-MirrorTasks.ps1', 'MirrorCredential.ps1', 'tasks.json',
                     'Invoke-CloudBackup.ps1', 'Set-CloudBackupSecrets.ps1', 'kopia.json')
+# vms/ (repo) -> %ProgramData%\HomelabVMs, on machines that vms/vms.json gives a VM. Sync-HyperV.ps1
+# then creates any missing VM (never changes or deletes one): see vms/README.md.
+$VmsDir = Join-Path $env:ProgramData 'HomelabVMs'
+$VmsManaged = @('Sync-HyperV.ps1', 'vms.json', 'cloud-ops.user-data')
 $TaskName = 'Rack Dashboard SMART agent'
 $Stamp = Join-Path $Dir 'last-full-run.txt'
 $FullEveryMinutes = 15
@@ -63,9 +67,11 @@ function Invoke-Git([string[]]$GitArgs) {
 }
 
 function Test-PowerShellFile([string]$Path) {
+    # .json must parse, .ps1/.psm1 must parse as PowerShell; other files (templates) are copied as-is.
     if ($Path -like '*.json') {
         try { Get-Content -Raw $Path | ConvertFrom-Json | Out-Null; return $true } catch { return $false }
     }
+    if ($Path -notlike '*.ps1' -and $Path -notlike '*.psm1') { return $true }
     $errors = $null
     [void][System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$errors)
     return @($errors).Count -eq 0
@@ -123,6 +129,10 @@ function Update-Agent {
         try { Invoke-Git @('sparse-checkout', 'add', 'backups') | Out-Null; Write-Log 'checkout now includes backups/' }
         catch { Write-Log "could not add backups/ to the checkout: $($_.Exception.Message)" }
     }
+    if (-not (Test-Path (Join-Path $Repo 'vms'))) {
+        try { Invoke-Git @('sparse-checkout', 'add', 'vms') | Out-Null; Write-Log 'checkout now includes vms/' }
+        catch { Write-Log "could not add vms/ to the checkout: $($_.Exception.Message)" }
+    }
     $files = @($Managed | ForEach-Object { @{ name = $_; src = (Join-Path (Join-Path (Join-Path $Repo 'dashboard') 'agents') $_); dst = (Join-Path $Dir $_) } })
     $hostName = $null
     try { $hostName = (Get-Content -Raw (Join-Path $Dir 'config.json') | ConvertFrom-Json).name } catch { }
@@ -138,6 +148,17 @@ function Update-Agent {
     if ($hasTasks) {
         if (-not (Test-Path $BackupsDir)) { New-Item -ItemType Directory -Force -Path $BackupsDir | Out-Null }
         $files += @($BackupsManaged | ForEach-Object { @{ name = "backups/$_"; src = (Join-Path (Join-Path $Repo 'backups') $_); dst = (Join-Path $BackupsDir $_) } })
+    }
+    $hasVms = Test-Path (Join-Path $VmsDir 'vms.json')
+    if (-not $hasVms) {
+        try {
+            $vdefs = (Get-Content -Raw (Join-Path (Join-Path $Repo 'vms') 'vms.json') | ConvertFrom-Json).vms
+            $hasVms = [bool]@($vdefs.PSObject.Properties | Where-Object { "$($_.Value.host)".ToLower() -eq $hostName.ToLower() }).Count
+        } catch { }
+    }
+    if ($hasVms) {
+        if (-not (Test-Path $VmsDir)) { New-Item -ItemType Directory -Force -Path $VmsDir | Out-Null }
+        $files += @($VmsManaged | ForEach-Object { @{ name = "vms/$_"; src = (Join-Path (Join-Path $Repo 'vms') $_); dst = (Join-Path $VmsDir $_) } })
     }
     $rejected = @(); $installed = $false
     foreach ($f in $files) {
@@ -174,6 +195,20 @@ function Update-Agent {
             if (@($r.pending).Count) { $pendingNote = "$dot$(@($r.pending) -join '; ')" }
             if (@($r.errors).Count) { $taskError = "tasks.json: $(@($r.errors) -join '; ')" }
         } catch { $taskError = "task sync failed: $($_.Exception.Message)" }
+    }
+    # VMs from vms/vms.json: creates missing ones only (a first build downloads the image, minutes).
+    if ($hasVms -and (Test-Path (Join-Path $VmsDir 'Sync-HyperV.ps1'))) {
+        Set-DeployPhase 'applying VMs'
+        $dot = " $([char]0x00B7) "
+        try {
+            $r = & (Join-Path $VmsDir 'Sync-HyperV.ps1') -HostName $hostName -Dir $VmsDir -AgentDir $Dir
+            foreach ($j in @($r.updated)) { Write-Log $j }
+            foreach ($w in @($r.pending)) { Write-Log "VM pending: $w" }
+            foreach ($e in @($r.errors)) { Write-Log "VM error: $e" }
+            if (@($r.updated).Count) { $taskNote += "${dot}VMs: $(@($r.updated) -join '; ')" }
+            if (@($r.pending).Count) { $pendingNote += "$dot$(@($r.pending) -join '; ')" }
+            if (@($r.errors).Count) { $vmErr = "vms.json: $(@($r.errors) -join '; ')"; $taskError = if ($taskError) { "$taskError; $vmErr" } else { $vmErr } }
+        } catch { $vmErr = "VM sync failed: $($_.Exception.Message)"; $taskError = if ($taskError) { "$taskError; $vmErr" } else { $vmErr } }
     }
 
     if ($rejected.Count) { Write-DeployStatus 'rejected' "not installed (failed checks): $($rejected -join ', ')" }

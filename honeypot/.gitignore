@@ -1,4 +1,4 @@
-# Terraform/Packer state and inputs live on optiplex-management only: the state holds resource IDs,
+# Terraform/Packer state and inputs live on cloud-ops only: the state holds resource IDs,
 # the home IP and host keys. .terraform.lock.hcl (provider checksums) IS committed once generated.
 terraform/.terraform/
 terraform/*.tfstate

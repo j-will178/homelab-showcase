@@ -337,6 +337,41 @@ class MetricsStore:
         return {"reference_host": self.reference_host, "reference_commit": ref, "hosts": out}
 
 
+class PendingDeployKeys:
+    """New hosts waiting for their read-only GitHub deploy key (posted by a VM's first-boot
+    bootstrap, token-authenticated). Shown on the Deployments screen until the host starts
+    reporting an updater status, then dropped. Public keys only; nothing here is secret."""
+
+    HOST = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+    KEY = re.compile(r"^ssh-ed25519 [A-Za-z0-9+/]{68}(?: [A-Za-z0-9@._-]{1,64})?$")
+
+    def __init__(self, max_age=7200):
+        self.max_age = max_age
+        self.keys = {}
+        self.lock = threading.Lock()
+
+    def put(self, body, now=None):
+        if not isinstance(body, dict):
+            raise ValueError("expected a JSON object")
+        host, key = str(body.get("host", "")).strip().lower(), str(body.get("public_key", "")).strip()
+        if not self.HOST.match(host):
+            raise ValueError("bad host name")
+        if not self.KEY.match(key):
+            raise ValueError("expected one ssh-ed25519 public key")
+        with self.lock:
+            self.keys[host] = {"key": key, "at": time.time() if now is None else now}
+            if len(self.keys) > 20:                       # a handful of hosts at most
+                self.keys.pop(min(self.keys, key=lambda h: self.keys[h]["at"]))
+        return {"host": host}
+
+    def view(self, reporting_hosts=(), now=None):
+        now = time.time() if now is None else now
+        with self.lock:
+            for h in [h for h, v in self.keys.items() if h in reporting_hosts or now - v["at"] > self.max_age]:
+                del self.keys[h]
+            return [{"host": h, "public_key": v["key"], "age_s": round(now - v["at"])} for h, v in sorted(self.keys.items())]
+
+
 class DeployRequest:
     """'Deploy now' for every host. Agents get the latest request (id + age) in the
     response to each metrics POST; each one then does its normal update right away

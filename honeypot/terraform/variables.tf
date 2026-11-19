@@ -58,7 +58,7 @@ variable "honeypot_vpc_range" {
 }
 
 variable "lab_ssh_public_key" {
-  description = "optiplex-management's key: 'jump' on the bastion (forward to :47022 only) and 'collector' on the honeypot (log reader only)."
+  description = "cloud-ops's key: 'jump' on the bastion (forward to :47022 only) and 'collector' on the honeypot (log reader only)."
   type        = string
 }
 

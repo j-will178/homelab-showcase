@@ -1,5 +1,5 @@
 terraform {
-  # Runs on optiplex-management. Also works with OpenTofu.
+  # Runs on cloud-ops. Also works with OpenTofu.
   required_version = ">= 1.16.0"
 
   required_providers {

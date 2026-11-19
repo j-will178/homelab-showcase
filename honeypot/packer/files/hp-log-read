@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """
-hp-log-read: the only command optiplex-management's key can run on the honeypot
+hp-log-read: the only command cloud-ops's key can run on the honeypot
 (sshd ForceCommand for user "collector"). Hands out Cowrie's JSON log in chunks.
 
     ssh collector@honeypot read                 from the start of the oldest log file

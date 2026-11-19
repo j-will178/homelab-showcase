@@ -81,8 +81,26 @@
     </tr>`;
   }
 
+  // New hosts (VMs built from vms/vms.json) waiting for their read-only GitHub deploy key.
+  function pendingKeys() {
+    const pk = data.pending_keys || [];
+    $('deployKeys').innerHTML = pk.map((k, i) => `
+      <div class="dkey">
+        <div><b>${esc(k.host)}</b> is waiting for its deploy key. Add it once at <b>GitHub → homelab → Settings → Deploy keys → Add deploy key</b>,
+          title <code>${esc(k.host)}</code>, <b>Allow write access unticked</b>. It joins within a minute of that.</div>
+        <div class="dkrow"><code class="kv" id="dk${i}">${esc(k.public_key)}</code><button type="button" data-k="${i}">Copy</button></div>
+      </div>`).join('');
+    $('deployKeys').querySelectorAll('button[data-k]').forEach(b => b.addEventListener('click', () => {
+      const text = pk[+b.dataset.k].public_key;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(
+        () => { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); },
+        () => { const r = document.createRange(); r.selectNodeContents($('dk' + b.dataset.k)); getSelection().removeAllRanges(); getSelection().addRange(r); });
+    }));
+  }
+
   function render() {
     if (!data) return;
+    pendingKeys();
     const hosts = data.hosts || [], req = data.request;
     $('deployEmpty').hidden = hosts.length > 0;
     $('deployRows').innerHTML = hosts.map(h => row(h, req)).join('');

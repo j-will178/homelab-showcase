@@ -1,0 +1,18 @@
+[Unit]
+Description=Push cloud-ops' compute metrics to the rack dashboard (every 10 s)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Same agent as optiplex-management. "Deploy all" on the dashboard starts homelab-deploy here too.
+ExecStart=/usr/bin/python3 /opt/rack-agent/metrics_agent.py --url http://optiplex-management.home.arpa:8080/api/metrics --token-file /etc/rack-agent/token --name cloud-ops --loop 10 \
+    --deploy-status /var/lib/homelab-deploy/status.json \
+    --deploy-stamp /run/rack-deploy-requested --deploy-command "systemctl start --no-block homelab-deploy.service"
+# The agent exits on purpose when its file is updated; always come back.
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

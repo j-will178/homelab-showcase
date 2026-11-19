@@ -1,0 +1,26 @@
+{
+  "images": {
+    "debian-13-genericcloud": {
+      "base_url": "https://cloud.debian.org/images/cloud/trixie/",
+      "file": "",
+      "sha512": ""
+    }
+  },
+  "vms": {
+    "cloud-ops": {
+      "host": "backup-compute",
+      "enabled": true,
+      "image": "debian-13-genericcloud",
+      "cpu": 1,
+      "memory_mb": 2048,
+      "disk_gb": 25,
+      "switch": "LAN",
+      "mac": "02:4C:41:42:00:01",
+      "secure_boot": true,
+      "path": "C:\\Hyper-V",
+      "role": "cloud-ops",
+      "admin_user": "labadmin",
+      "admin_ssh_keys": []
+    }
+  }
+}

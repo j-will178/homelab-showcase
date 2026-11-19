@@ -17,6 +17,17 @@ After pulling, the script re-runs itself from the new checkout (`--apply`), so a
 
 If anything fails, it restores the snapshot. During the migration, it also brings `noise-map` back exactly as it was.
 
+### Roles
+
+The same script runs on more than one Linux host. `/etc/homelab/role` says what this host is; no file means `dashboard` (the OptiPlex, as before).
+
+| Role | Host | Deploys when these change | What |
+|---|---|---|---|
+| `dashboard` | optiplex-management | `dashboard/` | The steps above |
+| `cloud-ops` | cloud-ops (VM) | `cloud-ops/`, `dashboard/agents/metrics_agent.py` | Metrics agent, nftables, sshd config, unattended-upgrades (checked with `nft -c` and `sshd -t` first; snapshot and rollback like the dashboard). See [`cloud-ops/`](../cloud-ops/) |
+
+An unknown role fails the deploy instead of guessing. cloud-ops doesn't use the manual setup below: its first boot (see [`vms/`](../vms/)) makes the deploy key, clones and installs the timer.
+
 A failed commit is recorded and **not retried** until `main` moves, so a broken commit can't restart services every 2 minutes. To force a retry: `sudo rm /var/lib/homelab-deploy/failed-rev`.
 
 Pull, not push: the OptiPlex only makes outbound connections to GitHub. No webhook port, no Actions runner.

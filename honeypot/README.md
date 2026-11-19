@@ -2,11 +2,11 @@
 
 A disposable Cowrie honeypot in the cloud, reached only through a bastion, with no outbound access. Its logs feed the dashboard's **Honeypot** and **Attack patterns** screens (simulated until this is running).
 
-> **Status:** code only. Nothing has been created on DigitalOcean yet. It will start **lab-only** (`exposure`): Cowrie reachable from the home IP only, until the checklist below passes. The next PR adds the lab side: pinned Terraform/Packer on optiplex-management, the weekly rebuild, and the log puller.
+> **Status:** code only. Nothing has been created on DigitalOcean yet. It will start **lab-only** (`exposure`): Cowrie reachable from the home IP only, until the checklist below passes. The next PR adds the lab side: pinned Terraform/Packer on [cloud-ops](../cloud-ops/), the weekly rebuild, and the log puller.
 
 ```mermaid
 flowchart LR
-    OPT["optiplex-management<br/>Terraform · Packer · log puller"]
+    OPT["cloud-ops (VM on backup-compute)<br/>Terraform · Packer · log puller"]
     subgraph cloud["DigitalOcean"]
         BAS["bastion · own VPC<br/>reserved IP<br/>SSH :2222 from home IP only"]
         HP["honeypot · own VPC<br/>Cowrie on 22, 23<br/>admin SSH :47022, bastion only<br/>no outbound · rebuilt weekly"]
@@ -87,7 +87,7 @@ Terraform replaces only the honeypot (new image) and updates the firewall rule i
 ## First-time setup (once)
 
 1. **DigitalOcean account:** 2FA on, recovery codes in Bitwarden. The support ticket confirming a no-egress honeypot is fine is already done; keep the reply.
-2. **API token:** a custom-scoped token, stored only on optiplex-management (one-time secret, like the backup keys). It needs create/read/update/delete for droplets, firewalls, VPCs, reserved IPs, SSH keys, tags and snapshots/images, plus the read access the provider needs (regions, sizes, actions). Give it an expiry and put a renewal reminder in Bitwarden.
+2. **API token:** a custom-scoped token, stored only on cloud-ops (one-time secret, like the backup keys). It needs create/read/update/delete for droplets, firewalls, VPCs, reserved IPs, SSH keys, tags and snapshots/images, plus the read access the provider needs (regions, sizes, actions). Give it an expiry and put a renewal reminder in Bitwarden.
 3. **Keys:** the lab key is generated on optiplex. Your admin key (`hpadmin`) is your own public key.
 
 ## Updating Cowrie
@@ -113,4 +113,4 @@ About $10–11/month: bastion `s-1vcpu-512mb-10gb` (~$4), honeypot `s-1vcpu-1gb`
   - `sshd -t`/`-T` on both sshd configs, with the effective settings for `collector` and `jump` checked;
   - both cloud-init templates rendered and parsed as YAML;
   - HCL parsed.
-- Not yet run: `terraform validate`/`plan` and `packer validate`. HashiCorp's download servers aren't reachable from where this was written, so they run on optiplex-management in the next PR, before anything is created.
+- Not yet run: `terraform validate`/`plan` and `packer validate`. HashiCorp's download servers aren't reachable from where this was written, so they run on cloud-ops in the next PR, before anything is created.
