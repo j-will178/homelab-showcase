@@ -6,13 +6,24 @@ export DEBIAN_FRONTEND=noninteractive
 F=/tmp/files
 
 # ---- patched base OS (includes trixie-security) ----
-apt-get update
-apt-get -y -o Dpkg::Options::=--force-confold full-upgrade
-apt-get -y install --no-install-recommends python3-venv nftables sudo
+# A fresh droplet is still booting when Packer connects: cloud-init and the apt timers hold the
+# package lock for a minute or two (apt-get then fails with exit 100). Wait for both.
+cloud-init status --wait >/dev/null || true
+systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+# Whatever is already running (an apt-daily run, an agent installer) finishes first; it's not
+# killed, which could leave dpkg half-done. Up to 10 minutes.
+for _ in $(seq 120); do
+  pgrep -x 'apt|apt-get|dpkg|unattended-upgr|unattended-upgrade' >/dev/null || break
+  sleep 5
+done
+apt() { apt-get -o DPkg::Lock::Timeout=600 -o Acquire::Retries=3 "$@"; }
+apt update
+apt -y -o Dpkg::Options::=--force-confold full-upgrade
+apt -y install --no-install-recommends python3-venv nftables sudo
 # DigitalOcean's agents phone home and add a web-console login path; neither is wanted here.
-apt-get -y purge droplet-agent do-agent || true
-apt-get -y autoremove --purge
-apt-get clean
+apt -y purge droplet-agent do-agent || true
+apt -y autoremove --purge
+apt clean
 
 # ---- accounts ----
 # cowrie: runs the honeypot, no login. collector: log reading only (ForceCommand), needs a shell
