@@ -161,6 +161,9 @@ class IngestEndpointTest(unittest.TestCase):
             v = json.load(r)
         self.assertEqual((v["source"], v["feed_status"]["state"]), ("cowrie", "ok"))
 
+    def get_json(self, path):
+        return json.loads(self.get(path)[2])
+
     def get(self, path):
         try:
             with urllib.request.urlopen(self.base + path, timeout=5) as r:
@@ -200,6 +203,44 @@ class IngestEndpointTest(unittest.TestCase):
         self.post({"id": "1", "lines": lines})
         rows = list(csv.reader(io.StringIO(self.get("/api/honeypot/export.csv")[2].decode("utf-8-sig"))))
         self.assertEqual([r[13] for r in rows if r[2] == "closed"], ["3.0"])
+
+    def test_upload_reaches_session_pattern_and_csv(self):
+        now = time.time()
+        sha = "ab" * 32
+        lines = session_lines(now - 10)
+        lines.insert(-1, line("cowrie.command.input", now - 8, "s1", input="scp -t /bin/qz81kd02"))
+        lines.insert(-1, line("cowrie.session.file_upload", now - 7.5, "s1", filename="qz81kd02", destfile="/bin/qz81kd02",
+                              shasum=sha.upper(), outfile=sha, duplicate=False))
+        lines.insert(-1, line("cowrie.session.file_upload", now - 7.4, "s1", filename="x", shasum="not-a-hash"))
+        self.post({"id": "1", "lines": lines})
+        v = self.get_json("/api/honeypot")
+        self.assertEqual(v["summary"]["uploads"], 2)
+        feed = [e for e in v["feed"] if e["kind"] == "upload"]
+        self.assertIn("/bin/qz81kd02 · sha256 abababababababab", [e["text"] for e in feed])
+        pat = self.get_json("/api/honeypot/patterns")["patterns"]
+        self.assertEqual(pat[0]["uploads"][0], [sha, "qz81kd02", 1])
+        self.assertIn("File upload", pat[0]["label"])
+        rows = list(csv.reader(io.StringIO(self.get("/api/honeypot/export.csv")[2].decode("utf-8-sig"))))
+        up = [r for r in rows if r[2] == "upload"]
+        self.assertEqual([(r[11], r[14], r[15]) for r in up], [("/bin/qz81kd02", "qz81kd02", sha), ("", "x", "")])
+
+
+class MigrationTest(unittest.TestCase):
+    def test_old_database_gains_uploads_column(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "honeypot.db")
+            old = sqlite3.connect(path)
+            old.executescript("""CREATE TABLE sessions (id TEXT PRIMARY KEY, start REAL, end REAL, ip TEXT, cc TEXT,
+                country TEXT, city TEXT, protocol TEXT, client TEXT, logins INTEGER, shell INTEGER, username TEXT,
+                password TEXT, commands TEXT, downloads TEXT);
+                INSERT INTO sessions VALUES ('s0', %f, NULL, '203.0.113.9', NULL, NULL, NULL, 'ssh', NULL, 1, 1,
+                'root', 'x', '["uname -a"]', '[]');""" % time.time())
+            old.commit()
+            old.close()
+            db = honeypot.HoneypotDB(path)
+            view, _ = db.patterns()
+            self.assertEqual((view["shell_sessions"], view["patterns"][0]["uploads"]), (1, []))
 
 class CsvCellTest(unittest.TestCase):
     def test_formula_prefixes_escaped(self):

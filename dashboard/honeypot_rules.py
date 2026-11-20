@@ -90,6 +90,7 @@ RULES = [
     ("recon", r"ls -lh \$\(which|\bfile /bin/|/proc/self/exe", "binary architecture"),
     ("recon", r"\bps (aux|-ef)\b(?!.*(miner|xmr))|\btop\b", "running processes"),
     ("recon", r"\bls -\w*\s+/(home|root)\b", "home directories"),
+    ("recon", r"^(locate|which|command -v) \S+$", "installed tools"),
     ("persistence", r"authorized_keys", "replaced the SSH authorized keys to keep access"),
     ("persistence", r"\bcrontab (?!-l)|/etc/cron", "added a cron job"),
     ("persistence", r"\buseradd\b|\badduser\b", "created a user account"),
@@ -98,15 +99,22 @@ RULES = [
     ("cover-tracks", r"history -c|histfile|\.bash_history|unset hist", "cleared the shell history"),
     ("cover-tracks", r"\bchattr\b|\blockr\b", "changed file attributes so they can't be removed"),
     ("cover-tracks", r"rm -rf /var/log|/var/log/\S+\s*>|>\s*/var/log", "wiped logs"),
+    ("cover-tracks", r"(^|[;&|]\s*)(LC_ALL=C\s+)?rm -f /(bin|usr/bin|tmp|var/tmp|dev/shm)/\S+",
+     "deleted the program it dropped"),
     ("malware-drop", r"\b(wget|curl|tftp|ftpget|busybox wget)\b", "download"),
     ("malware-drop", r"\|\s*(ba)?sh\b", "pipe-to-shell"),
     ("execution", r"chmod \+x|\bchmod 7\d\d\b", "made a file executable"),
-    ("execution", r"(^|[;&|]\s*)\./|\bnohup\b|\bsh <file>|\bperl -e\b|\bpython3? -c\b", "ran a program"),
-    ("miner-hunt", r"\bxmrig\b|\bminer\b|\bkinsing\b|\bkdevtmpfsi\b", "looked for and killed competing crypto-miners"),
+    ("execution", r"(^|[;&|]\s*)\./|\bnohup\b|\bsh <file>|\bperl -e\b|\bpython3? -c\b|^(ba)?sh \.\w+$|"
+     r"^(LC_ALL=C\s+)?/(bin|usr/bin|tmp|var/tmp|dev/shm|root)/[\w.-]+$", "ran a program"),
+    # scp -t is the receiving end of an upload: the attacker pushes a file instead of downloading one.
+    ("upload", r"^scp -t\b", "sent a file over SCP"),
+    ("miner-hunt", r"\bxmrig\b|\bminer\b|\[mm\]iner|\bkinsing\b|\bkdevtmpfsi\b",
+     "looked for and killed competing crypto-miners"),
     ("credential-access", r"/etc/(passwd|shadow)|\.ssh/id_|\.aws/|\.docker/config", "read account and key files"),
     ("iot-probe", r"^(enable|system|shell|sh|linuxshell)$|^ping\s*;\s*sh$",
      "tried to break out of a restricted router console (enable, system, shell)"),
     ("iot-probe", r"/bin/busybox|cat /bin/echo", "probed for a BusyBox IoT shell"),
+    ("iot-probe", r"^/(ip|system|interface|user|tool) \w+", "probed for a MikroTik router (RouterOS commands)"),
     ("drop-site", r">\s*/[\w./-]*/\.\w+\s*&&\s*chmod 7\d\d\b",
      "searched for a writable, executable directory to drop malware in"),
     # Honeypot detectors: shell-fidelity tests (random arithmetic, $$, positional parameters, functions,
@@ -116,14 +124,14 @@ RULES = [
      "tested whether the shell is real (arithmetic, functions, subshells)"),
     ("honeypot-check", r"/proc/self/stat\b|/proc/self/status|\bnspid\b",
      "checked /proc/self for a real process and a container (Cowrie fails this step)"),
-    ("liveness", r"echo -e [\"']\\\\?x|^echo \S+$|^(sh -c ')?printf\b|^echo; echo\b", "checked the shell answers"),
+    ("liveness", r"echo -e [\"']\\\\?x|^echo \S+$|^echo \S+ \| cat -n$|^(sh -c ')?printf\b|^echo; echo\b", "checked the shell answers"),
     # shell plumbing: recognized (so it isn't "unrecognized"), but not worth a sentence
     ("housekeeping", r"^(cd|ls|pwd|clear|exit|export \w+=)\b(?!.*\.ssh)|^rm -rf? [\w./<>-]+$|^$", ""),
 ]
 _RULES = [(tag, re.compile(rx, re.I), phrase) for tag, rx, phrase in RULES]
-TAG_ORDER = ["honeypot-check", "recon", "credential-access", "iot-probe", "drop-site", "miner-hunt", "malware-drop",
-             "execution", "persistence", "cover-tracks", "liveness"]
-TAG_LABEL = {"honeypot-check": "Honeypot check", "drop-site": "Drop-site search",
+TAG_ORDER = ["honeypot-check", "recon", "credential-access", "iot-probe", "drop-site", "miner-hunt", "upload",
+             "malware-drop", "execution", "persistence", "cover-tracks", "liveness"]
+TAG_LABEL = {"honeypot-check": "Honeypot check", "drop-site": "Drop-site search", "upload": "File upload",
              "recon": "Recon", "credential-access": "Credential grab", "iot-probe": "IoT shell probe",
              "miner-hunt": "Miner hunting", "malware-drop": "Malware drop", "execution": "Execution",
              "persistence": "Persistence", "cover-tracks": "Track covering", "liveness": "Liveness check"}
@@ -160,8 +168,9 @@ def _join(parts):
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
-def analyze(commands, downloads=(), username=None, password=None):
-    """-> {fingerprint, tags, label, summary, unrecognized, hosts, markers}"""
+def analyze(commands, downloads=(), username=None, password=None, uploaded=False):
+    """-> {fingerprint, tags, label, summary, unrecognized, hosts, markers}
+    uploaded: Cowrie recorded a file upload (SCP or SFTP) in the session."""
     found = {}
     unrecognized = []
     for c, n in zip(commands, normalize_all(commands)):
@@ -172,6 +181,8 @@ def analyze(commands, downloads=(), username=None, password=None):
             found.setdefault(tag, [])
             if phrase not in found[tag]:
                 found[tag].append(phrase)
+    if uploaded:
+        found.setdefault("upload", [])
     tags = [t for t in TAG_ORDER if t in found]
     hosts = payload_hosts(commands, downloads)
     markers = []
@@ -189,12 +200,15 @@ def analyze(commands, downloads=(), username=None, password=None):
         steps.append(found["credential-access"][0])
     if "iot-probe" in found:
         mark = f" with the botnet marker \u201c{_join(markers[:3])}\u201d" if markers else ""
-        probe = [p + mark if p.startswith("probed") else p for p in found["iot-probe"][:2]]
+        probe = [p + mark if p.startswith("probed for a BusyBox") else p for p in found["iot-probe"][:3]]
         steps.append(_join(probe))
     if "drop-site" in found:
         steps.append(found["drop-site"][0])
     if "miner-hunt" in found:
         steps.append(found["miner-hunt"][0])
+    if "upload" in found:
+        steps.append("uploaded a file to the honeypot (captured: Cowrie keeps it by SHA-256)" if uploaded
+                     else "tried to upload a file over SCP")
     if "malware-drop" in found:
         where = f" from {_join(hosts[:2])}" if hosts else ""
         run = " and run it" if "execution" in found else ""
@@ -219,6 +233,8 @@ def analyze(commands, downloads=(), username=None, password=None):
         text = "Got a shell but typed nothing."
     if steps and unrecognized:
         text += f" Also ran {len(unrecognized)} unrecognized command{'s' if len(unrecognized) != 1 else ''}."
-    return {"fingerprint": fingerprint(commands) if commands else None, "tags": tags, "label": label(tags),
+    # An SFTP upload with no shell commands is still a pattern of its own.
+    fp = fingerprint(commands) if commands else fingerprint(["<sftp upload>"]) if uploaded else None
+    return {"fingerprint": fp, "tags": tags, "label": label(tags),
             "summary": who + text, "unrecognized": unrecognized, "hosts": hosts,
             "markers": markers}

@@ -65,6 +65,34 @@ class DetectorTest(unittest.TestCase):
         self.assertEqual(a["unrecognized"], [])
 
 
+# SCP upload campaign, 2026-11-19 (random name normalized to <rand> by Cowrie's export)
+SCP = ["ps -ef", "scp -t /bin/t9941h931uld97ia2gt8cmv8ps", "LC_ALL=C /bin/t9941h931uld97ia2gt8cmv8ps",
+       "LC_ALL=C rm -f /bin/t9941h931uld97ia2gt8cmv8ps"]
+
+
+class OtherScriptsTest(unittest.TestCase):
+    def test_scp_upload(self):
+        a = rules.analyze(SCP, uploaded=True)
+        self.assertEqual(a["label"], "Recon + File upload + Track covering")
+        self.assertIn("uploaded a file to the honeypot (captured", a["summary"])
+        self.assertIn("deleted the program it dropped", a["summary"])
+        self.assertEqual(a["unrecognized"], [])
+        self.assertIn("tried to upload a file over SCP", rules.analyze(SCP)["summary"])   # stored before uploads were kept
+        self.assertEqual(rules.fingerprint(SCP), rules.fingerprint([c.replace("t9941h931uld97ia2gt8cmv8ps", "q81kd02nzm4la7xw9cpe3")
+                                                                     for c in SCP]))
+
+    def test_sftp_only_upload_has_a_pattern(self):
+        a = rules.analyze([], uploaded=True)
+        self.assertIsNotNone(a["fingerprint"])
+        self.assertEqual(a["tags"], ["upload"])
+
+    def test_mikrotik_miner_and_liveness(self):
+        a = rules.analyze(["/ip cloud print", "ps | grep '[Mm]iner'", "echo Hi | cat -n", "locate xmrig", "sh .k"])
+        self.assertIn("MikroTik", a["summary"])
+        self.assertIn("miner-hunt", a["tags"])
+        self.assertEqual(a["unrecognized"], [])
+
+
 class MiraiTest(unittest.TestCase):
     def test_marker_escape_drop_site_and_arch(self):
         a = rules.analyze(MIRAI)

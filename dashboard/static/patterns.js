@@ -94,7 +94,8 @@
           <div class="srcs">${src.map(s => `<div class="row" title="${esc([s[2] || s[1], `${num(s[3])} session${s[3] === 1 ? '' : 's'}`, `last ${ago(s[4] + since())} ago`].filter(Boolean).join(' · '))}">` +
             `<span>${flag(s[1])} <code>${esc(s[0])}</code></span><span>${num(s[3])}×</span></div>`).join('') || '<div class="row dim">—</div>'}</div>
           ${p.ips > src.length ? `<div class="more">busiest ${src.length} of ${num(p.ips)} shown</div>` : ''}</div>
-        <div><h4>Payload hosts <span class="muted">· blocked</span></h4>${p.hosts.length ? p.hosts.map(h => `<div class="row"><code class="bad">${esc(h[0])}</code><span>${num(h[1])}</span></div>`).join('') : '<div class="row dim">none</div>'}</div>
+        <div><h4>Payload hosts <span class="muted">· blocked</span></h4>${p.hosts.length ? p.hosts.map(h => `<div class="row"><code class="bad">${esc(h[0])}</code><span>${num(h[1])}</span></div>`).join('') : '<div class="row dim">none</div>'}
+          ${(p.uploads || []).length ? `<h4>Uploaded files <span class="muted">· captured · SHA-256</span></h4>` + p.uploads.map(u => `<div class="row" title="${esc(u[0])}"><span><code class="bad">${esc(u[0].slice(0, 16))}…</code> <span class="dim">${esc(u[1])}</span></span><span>${num(u[2])}</span></div>`).join('') : ''}</div>
       </div>`;
     if (keep) ['', 'pre', '.srcs'].forEach((s, i) => { const el = s ? box.querySelector(s) : box; if (el) el.scrollTop = keep[i]; });
     shownFp = p.fp;

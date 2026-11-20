@@ -196,7 +196,8 @@
 
   const KIND = {
     connect: ['conn', 'connect'], client: ['client', 'client'], login_failed: ['fail', 'login'],
-    login_success: ['ok', 'login ✓'], command: ['cmd', 'cmd'], download: ['dl', 'download'], closed: ['close', 'closed'],
+    login_success: ['ok', 'login ✓'], command: ['cmd', 'cmd'], download: ['dl', 'download'], upload: ['up', 'upload'],
+    closed: ['close', 'closed'],
   };
 
   function feed() {
@@ -241,7 +242,9 @@
       tile('Login attempts', num(sm.login_attempts), 'username / password tries') +
       tile('Got a shell', num(sm.logins_ok), `${pct}% of attempts · fake shell`, 'warn') +
       tile('Commands typed', num(sm.commands), 'in the fake shell') +
-      tile('Download attempts', num(sm.downloads), 'all blocked (no egress)', sm.downloads ? 'crit' : '');
+      tile('Download attempts', num(sm.downloads),
+        sm.uploads ? `all blocked · ${num(sm.uploads)} file${sm.uploads === 1 ? '' : 's'} uploaded (captured)` : 'all blocked (no egress)',
+        sm.downloads || sm.uploads ? 'crit' : '');
 
     const sim = data.simulated;
     const lastAge = data.last_event_age_s != null ? data.last_event_age_s + since() : null;
