@@ -29,7 +29,7 @@ def session_lines(t, session="s1"):
     return [line("cowrie.session.connect", t, session, dst_port=22, protocol="ssh"),
             line("cowrie.login.success", t + 1, session, username="root", password="hunter2"),
             line("cowrie.command.input", t + 2, session, input="uname -a"),
-            line("cowrie.session.closed", t + 3, session, duration="3.0")]
+            line("cowrie.session.closed", t + 3, session, duration_ms=3000)]
 
 
 class FeedTest(unittest.TestCase):
@@ -186,11 +186,20 @@ class IngestEndpointTest(unittest.TestCase):
         self.assertEqual(by["login_success"][8:10], ["root", "hunter2"])
         self.assertEqual(by["closed"][13], "3.0")
         self.assertEqual(by["command"][7], "ssh")                             # session's protocol on every row
-        self.assertIn("'=HYPERLINK(", text)                                   # never a live formula
+        self.assertIn("'=HYPERLINK(", text)
+                                   # never a live formula
         self.assertEqual(len(list(csv.reader(io.StringIO(self.get("/api/honeypot/export.csv?days=1")[2].decode("utf-8-sig"))))), 1 + 5)
         self.assertEqual(self.get("/api/honeypot/export.csv?days=abc")[0], 400)
         self.assertEqual(self.get("/api/honeypot/export.csv?days=-1")[0], 400)
 
+
+    def test_csv_recovers_durations_stored_as_zero(self):
+        now = time.time()
+        lines = session_lines(now - 10)
+        lines[-1] = line("cowrie.session.closed", now - 7, "s1", duration_ms=None)   # Cowrie 3 field missing -> 0
+        self.post({"id": "1", "lines": lines})
+        rows = list(csv.reader(io.StringIO(self.get("/api/honeypot/export.csv")[2].decode("utf-8-sig"))))
+        self.assertEqual([r[13] for r in rows if r[2] == "closed"], ["3.0"])
 
 class CsvCellTest(unittest.TestCase):
     def test_formula_prefixes_escaped(self):

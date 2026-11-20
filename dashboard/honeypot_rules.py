@@ -135,10 +135,16 @@ def classify(cmd):
     return [(tag, phrase) for tag, rx, phrase in _RULES if rx.search(s)]
 
 
+INPUT_CAP = 300   # honeypot.parse_cowrie keeps this many characters of a command
+
+
 def payload_hosts(commands, downloads=()):
     hosts = []
     for c in list(commands) + list(downloads):
-        for h in URL_RE.findall(str(c)) + TFTP_HOST_RE.findall(str(c)):
+        c = str(c)
+        # A URL running into the end of a capped command was cut off ("http://203.0.1"): not a host.
+        found = [m.group(1) for m in URL_RE.finditer(c) if not (len(c) >= INPUT_CAP and m.end() == len(c))]
+        for h in found + TFTP_HOST_RE.findall(c):
             if h not in hosts:
                 hosts.append(h)
     return hosts

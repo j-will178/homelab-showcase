@@ -33,7 +33,7 @@ RETENTION = 30 * 86400      # what's kept on disk, and what the Attack patterns 
 BUCKET = 900                # timeline resolution (15 min)
 MAX_EVENTS = 200_000        # hard cap regardless of window
 MAX_SESSIONS = 50_000
-LIMITS = {"ip": 45, "username": 64, "password": 64, "input": 300, "url": 300, "version": 100, "session": 32}
+LIMITS = {"ip": 45, "username": 64, "password": 64, "input": rules.INPUT_CAP, "url": 300, "version": 100, "session": 32}
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
 
 KINDS = {
@@ -95,8 +95,11 @@ def parse_cowrie(line):
     elif kind == "client":
         ev["version"] = _clean(raw.get("version"), "version") or ""
     elif kind == "closed":
+        # Cowrie 3 reports duration_ms (an integer); Cowrie 2 reported duration in seconds.
         try:
-            ev["duration"] = max(0.0, min(float(raw.get("duration") or 0), 86400.0))
+            ms = raw.get("duration_ms")
+            sec = float(ms) / 1000 if ms is not None else float(raw.get("duration") or 0)
+            ev["duration"] = max(0.0, min(sec, 86400.0))
         except (TypeError, ValueError):
             ev["duration"] = 0.0
     return ev
@@ -188,14 +191,17 @@ class HoneypotDB:
         while True:
             with self.lock:
                 rows = self.db.execute(
-                    "SELECT e.rowid, e.t, e.session, e.kind, e.data, s.cc, s.country, s.city, s.protocol "
+                    "SELECT e.rowid, e.t, e.session, e.kind, e.data, s.cc, s.country, s.city, s.protocol, s.start "
                     "FROM events e LEFT JOIN sessions s ON s.id = e.session "
                     "WHERE e.rowid > ? AND e.t >= ? ORDER BY e.rowid LIMIT ?", (last, since, page)).fetchall()
             if not rows:
                 return
-            for rowid, t, session, kind, data, cc, country, city, protocol in rows:
-                yield dict(json.loads(data), t=t, session=session, kind=kind, cc=cc, country=country, city=city,
-                           session_protocol=protocol)
+            for rowid, t, session, kind, data, cc, country, city, protocol, start in rows:
+                ev = dict(json.loads(data), t=t, session=session, kind=kind, cc=cc, country=country, city=city,
+                          session_protocol=protocol)
+                if kind == "closed" and not ev.get("duration") and start is not None:
+                    ev["duration"] = max(0.0, t - start)     # stored before the duration_ms fix
+                yield ev
             last = rows[-1][0]
 
     def purge(self, now=None):
@@ -339,7 +345,8 @@ class HoneypotStore:
             elif k == "download" and len(s["downloads"]) < 20:
                 s["downloads"].append(ev["url"])
             elif k == "closed":
-                s["end"], s["duration"] = ev["t"], ev["duration"]
+                # Events stored before the duration_ms fix say 0: the timestamps still know.
+                s["end"], s["duration"] = ev["t"], ev["duration"] or max(0.0, ev["t"] - s["start"])
             self.events.append(ev)
             if self.db and persist:
                 self.db.add_event(ev)
@@ -618,7 +625,7 @@ class Simulator:
         if not telnet:
             emit(0.3, "cowrie.client.version", version=_pick(self.rng, CLIENTS))
         if roll < 0.25:                                  # scanner: banner grab only
-            emit(self.rng.uniform(0.5, 3), "cowrie.session.closed", duration=round(self.rng.uniform(0.5, 4), 2))
+            emit(self.rng.uniform(0.5, 3), "cowrie.session.closed", duration_ms=round(self.rng.uniform(500, 4000)))
             return out, src["geo"]
         got_in = False
         tries = self.rng.randint(1, 3) if roll > 0.8 else self.rng.randint(2, 12)
@@ -637,7 +644,7 @@ class Simulator:
                 emit(self.rng.uniform(0.2, 3), "cowrie.command.input", input=cmd)
                 for url in URL_RE.findall(cmd):
                     emit(0.4, "cowrie.session.file_download.failed", url=url)   # no egress: downloads always fail
-        emit(self.rng.uniform(0.5, 5), "cowrie.session.closed", duration=round(t - out[0][0] + 1, 2))
+        emit(self.rng.uniform(0.5, 5), "cowrie.session.closed", duration_ms=round((t - out[0][0] + 1) * 1000))
         return out, src["geo"]
 
     def _feed(self, lines, geo):

