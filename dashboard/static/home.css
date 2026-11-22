@@ -1,0 +1,24 @@
+/* Home page (/home/): one tile per dashboard section. Shares style.css's colors and fonts. */
+:root { --ok: #4ade80; --warn: #fbbf24; --crit: #f87171; }
+html, body.home-page { overflow: auto; }
+#home { max-width: 1100px; margin: 0 auto; padding: 8vh 32px 48px; }
+#home header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+#home h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 0.02em; }
+#home .sub { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+.tile { position: relative; display: block; padding: 22px 22px 18px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); color: var(--text); text-decoration: none; transition: border-color .15s, transform .15s; }
+a.tile:hover, a.tile:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+.tile h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.tile p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.tile .key { position: absolute; top: 16px; right: 18px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; }
+.tile.soon { opacity: 0.55; cursor: default; }
+.live { list-style: none; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.live li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.live li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.live li.ok::before { background: var(--ok); }
+.live li.warn::before { background: var(--warn); }
+.live li.crit::before { background: var(--crit); }
+.live li.dim { color: var(--muted); }
+.hint { margin-top: 28px; color: var(--muted); font-size: 12px; }

@@ -2,6 +2,17 @@
 
 A full-screen slideshow for the rack monitor, served by the OptiPlex. It rotates through screens every 5 minutes, and you can jump between them with the keyboard.
 
+**Sections.** The site has a home page and one area per section, all on port 8080:
+
+| URL | What |
+|---|---|
+| `/home/` | Home page: one tile per section with a live line (drive health, honeypot sessions). Keys **1**–**9** open a section. |
+| `/rack/` | This slideshow (the screens below). **Home** key or the *Home* item in the screen bar goes back. |
+| `/space/` | Planned: where Hubble and Webb are pointing (tile shows "coming soon") |
+| `/` | Signpost: a bare `/` goes to `/home/`; `/` with options (the old links, e.g. `/?projection=robinson`) goes to `/rack/` with them, so existing bookmarks and the kiosk keep working. |
+
+Section pages use `<base href="../">`, so they share the files in `static/` (CSS, JS, `vendor/`, `config.json`) and call `api/…` exactly as before; the static demo works the same under its GitHub Pages subpath.
+
 | # | Screen | Data source |
 |---|---|---|
 | 1 | **WAN noise**: live map of inbound traffic OPNsense blocks | OPNsense filterlog → syslog UDP 5514 |
@@ -27,6 +38,7 @@ Everything is served locally (no CDNs). The only Python dependency is `maxminddb
 |---|---|
 | **→** / **Space** / **PageDown** | Next screen |
 | **←** / **PageUp** | Previous screen |
+| **Home** | Back to the home page |
 | **1**–**9** | Jump to screen (1 noise, 2 drives, 3 compute, 4 tasks, 5 deployments, 6 honeypot, 7 attack patterns) |
 | **R** | Pause / resume rotation |
 | **F** | Fullscreen |
@@ -37,7 +49,7 @@ Screens change with a **halftone wave**: a band of dots riding a moving wave/noi
 
 URL: `?interval=120` (seconds per screen, `0` = no rotation) · `?screen=smart` / `compute` / `tasks` / `deploy` / `honeypot` / `patterns` (start screen) · `?projection=mollweide` · `?fade=120` · `?home=lat,lon` · `?transition=wave|fade|none` · `?daynight=0` · `?demo=1`
 
-Wall display: `chromium --kiosk "http://optiplex-management.home.arpa:8080/?projection=robinson"`
+Wall display: `chromium --kiosk "http://optiplex-management.home.arpa:8080/rack/?projection=robinson"` (the old URL without `rack/` still works).
 
 The map shows **day and night** from the real sun position: a faint glow centred under the sun, twilight in 3° steps from sunset to astronomical night, a dotted terminator line and a small sun marker. It updates every minute; toggle it with **Day / night** in the panel.
 

@@ -6,7 +6,7 @@
  *
  * URL options: ?screen=smart (start screen)  ?interval=300 (seconds, 0 = off)
  * ?transition=wave|fade|none (see transition.js)
- * Keys: → / Space / PageDown next · ← / PageUp previous · 1-9 jump · R pause · F fullscreen
+ * Keys: → / Space / PageDown next · ← / PageUp previous · 1-9 jump · R pause · F fullscreen · Home home page
  * Emits a `screenchange` event on document with detail {id, index}.
  */
 (() => {
@@ -93,6 +93,7 @@
     if (k === 'ArrowRight' || k === ' ' || k === 'PageDown') { e.preventDefault(); show(cur() + 1); }
     else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); show(cur() - 1); }
     else if (/^[1-9]$/.test(k) && +k <= screens.length) show(+k - 1);
+    else if (k === 'Home') location.href = 'home/';   // resolves against <base href="../">
     else if (k === 'r' || k === 'R') { S.paused = !S.paused; S.shownAt = performance.now(); updateState(); wake(); }
     else if (k === 'f' || k === 'F') {
       if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.();

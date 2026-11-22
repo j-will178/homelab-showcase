@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Served at /home/; shared assets, api/ and config.json live one level up. -->
+<base href="../">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homelab</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="home.css">
+</head>
+<body class="home-page">
+<main id="home">
+  <header>
+    <h1>Homelab</h1>
+    <p class="sub" id="homeClock"></p>
+  </header>
+
+  <nav class="tiles" aria-label="Sections">
+    <a class="tile" href="rack/" data-key="1">
+      <span class="key">1</span>
+      <h2>Rack dashboard</h2>
+      <p>WAN noise map, drive health, compute, scheduled tasks, deployments, honeypot and attack patterns.</p>
+      <ul class="live" id="rackLive"><li class="dim">loading…</li></ul>
+    </a>
+    <div class="tile soon" aria-disabled="true">
+      <span class="key">2</span>
+      <h2>Space</h2>
+      <p>Where Hubble and Webb are, which way they're pointing, and what they're observing.</p>
+      <ul class="live"><li class="dim">coming soon</li></ul>
+    </div>
+  </nav>
+
+  <p class="hint"><kbd>1</kbd>–<kbd>9</kbd> open a section · on a section, <kbd>Home</kbd> comes back here</p>
+</main>
+<script src="home.js"></script>
+</body>
+</html>

@@ -100,11 +100,13 @@ def main():
         {"mode": "demo", "home": [39.1, -94.58], "attribution": "", "interval": args.interval,
          "repo_url": args.repo_url}))
 
-    index = args.out / "index.html"
-    html = index.read_text()
-    first_script = html.index("<script src=")
-    html = html[:first_script] + '<script src="demo-api.js"></script>\n' + html[first_script:]
-    index.write_text(html)
+    # Every section page fetches api/*: demo-api.js answers those calls from demo-data.json.
+    for page in ("rack/index.html", "home/index.html"):
+        index = args.out / page
+        html = index.read_text()
+        first_script = html.index("<script src=")
+        html = html[:first_script] + '<script src="demo-api.js"></script>\n' + html[first_script:]
+        index.write_text(html)
     (args.out / ".nojekyll").write_text("")   # serve files as-is on GitHub Pages
     print(f"static demo written to {args.out}")
 
