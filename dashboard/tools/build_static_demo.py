@@ -24,6 +24,7 @@ sys.path.insert(0, str(DASHBOARD))
 import honeypot  # noqa: E402
 import metrics  # noqa: E402
 import smart    # noqa: E402
+import space    # noqa: E402
 
 ORDER = ["opnsense", "optiplex-management", "homeshare", "backup-compute"]
 
@@ -70,6 +71,8 @@ def snapshot():
     return csv_text, {
         "built_at": int(now),
         "honeypot": hp.view(now=now),
+        # Space: generated, like --demo (the static demo never calls NASA). A snapshot at build time.
+        "space": space.SpaceFeed(None, mode="demo").view(now=now),
         "honeypot_patterns": hp.patterns_view(now=now),
         "honeypot_stream": honeypot_stream(sim, now),
         "smart": smart_store.view(now=now),

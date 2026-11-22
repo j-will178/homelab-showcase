@@ -4,7 +4,7 @@ This is the source of truth for how the lab is laid out. **Update it in the same
 
 Diagrams are Mermaid, so GitHub renders them inline and changes show up as readable diffs.
 
-_Last updated: 2026-11-19_
+_Last updated: 2026-11-22_
 
 ## Hosts
 
@@ -69,12 +69,16 @@ flowchart TB
     M1 -. "agent update<br/>every 15 min" .-> GH
     M2 -. "agent update<br/>every 15 min" .-> GH
     CO -. "git pull every 2 min<br/>(read-only deploy key)" .-> GH
+
+    SPACE[("NASA ACROSS · CelesTrak · JPL Horizons<br/>public space data")]
+    OPT -. "HTTPS: schedules hourly,<br/>orbits 12 h / daily" .-> SPACE
 ```
 
 Notes:
 - Flat network: no managed switch yet, so no VLANs.
 - The Nokia ISP router sits behind OPNsense (its WAN port on the TRENDnet) and only provides Wi-Fi.
 - WireGuard clients land on optiplex-management, which only allows RDP to the storage servers.
+- The dashboard's space section (`/space/`, `/api/space`) fetches public data out over HTTPS on a timer, from optiplex-management only, and caches it in `state/space.json`: telescope schedules from NASA ACROSS (hourly), Hubble's orbit from CelesTrak (every 12 h) and Webb's position from JPL Horizons (daily). Browsers never call those sites.
 - optiplex-management auto-deploys from `main` (see [`deploy/`](../deploy/)): a systemd timer pulls the repo and redeploys the rack dashboard to `/opt/rack-dashboard` when it changes. Outbound only.
 - Agents on every machine push **compute metrics every 10 seconds** and **drive health (SMART) every 15 min** to optiplex-management (token-authenticated). It still only connects out to the servers over RDP.
 - Backup share credential: homeshare publishes a public key and backup-compute posts the `svc-backup` password encrypted to it via `/api/creds` on the dashboard (agent token; the dashboard never sees the password).
@@ -86,7 +90,7 @@ Notes:
 
 | Host | Service | Port | Deployed by |
 |---|---|---|---|
-| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated until cloud-ops posts the first real events, then real for good: 30 days in `honeypot.db`); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN) | `homelab-deploy.timer` |
+| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated until cloud-ops posts the first real events, then real for good: 30 days in `honeypot.db`); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN); HTTPS out for the space section (api.across.sciencecloud.nasa.gov hourly, celestrak.org every 12 h, ssd.jpl.nasa.gov daily) | `homelab-deploy.timer` |
 | optiplex-management | `rack-metrics-agent.service` (10 s loop) + `rack-smart-agent.timer` (15 min) | → 127.0.0.1:8080 | `homelab-deploy.timer` |
 | homeshare, backup-compute | Scheduled task *Rack Dashboard SMART agent* (`Invoke-RackAgent.ps1`, every minute: keeps task *Rack Dashboard metrics* running, a 10 s loop; every 15 min: update + SMART) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `Install-SmartAgent.ps1 -AutoUpdate`) |
 | OPNsense | configd action `rackagent smart-push` (`run.sh`) + GUI cron **every minute** (keeps the 10 s metrics loop running under `daemon -r`; update + SMART every 15 min) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `install-opnsense.sh`) |

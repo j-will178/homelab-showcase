@@ -8,7 +8,7 @@ A full-screen slideshow for the rack monitor, served by the OptiPlex. It rotates
 |---|---|
 | `/home/` | Home page: one tile per section with a live line (drive health, honeypot sessions). Keys **1**–**9** open a section. |
 | `/rack/` | This slideshow (the screens below). **Home** key or the *Home* item in the screen bar goes back. |
-| `/space/` | Planned: where Hubble and Webb are pointing (tile shows "coming soon") |
+| `/space/` | Planned: where Hubble and Webb are pointing (tile shows "coming soon"). Its data API, `/api/space`, is live: see *Space data* below. |
 | `/` | Signpost: a bare `/` goes to `/home/`; `/` with options (the old links, e.g. `/?projection=robinson`) goes to `/rack/` with them, so existing bookmarks and the kiosk keep working. |
 
 Section pages use `<base href="../">`, so they share the files in `static/` (CSS, JS, `vendor/`, `config.json`) and call `api/…` exactly as before; the static demo works the same under its GitHub Pages subpath.
@@ -204,6 +204,16 @@ sudo systemctl start rack-dashboard
 - Fingerprints, tags and summaries are computed from the stored commands when read, never stored, so improving a rule re-labels the whole 30-day history.
 
 **Uploads:** bots that push a file over SCP or SFTP (`scp -t /bin/<name>`) instead of downloading one get a `cowrie.session.file_upload` event. Unlike downloads, these succeed: Cowrie keeps the file on the honeypot as `/var/lib/cowrie/downloads/<sha256>`. The dashboard shows them in the feed (`upload`, target path and hash), in the *Download attempts* tile, as the `upload` tag, and per pattern under *Uploaded files* (SHA-256, file name, sessions). The files themselves stay on the honeypot and are gone at the weekly rebuild; only the hashes reach the dashboard.
+
+**Space data** (`space.py`, `GET /api/space`): where Hubble and Webb are and what they're scheduled to observe, fetched by the collector on a timer and cached in `state/space.json` (viewers never call these sites):
+
+| Data | Source | How often |
+|---|---|---|
+| Targets: name, RA/Dec, instrument, start/end (3 days back, 2 ahead) | [NASA ACROSS](https://app.across.sciencecloud.nasa.gov/about) API: the published HST and JWST weekly schedules, normalized. Public, no key. | hourly |
+| Hubble's orbit | [CelesTrak](https://celestrak.org) TLE for NORAD 20580, propagated here (two-body + J2; a picture, not a tracker) | every 12 h |
+| Webb's position | [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) vectors for NAIF −170, Earth-centred ecliptic, interpolated | daily |
+
+Each source fails on its own (retried after 15 min) and the last good data stays; `sources` in the reply shows each one's last success and error. Exposures of one target are merged into visits; the reply has each telescope's position (ecliptic longitude/latitude; altitude or distance), its `current` visit, the 6 `recent` ones and the 3 `next`, each with RA/Dec, ecliptic direction and angle from the Sun, plus the Sun's position and each telescope's Sun-angle limits (Hubble ≥ 50°, Webb 85–135°). These are **planned** pointings, not telemetry. `--space off` turns it off; `--demo` and the static demo use generated targets that respect the Sun limits.
 
 **CSV export:** the **Export events (CSV)** button on the Honeypot screen, or `GET /api/honeypot/export.csv`, downloads every stored event (up to 30 days; `?days=N` for less), oldest first, one row per event: `time_utc, session, event, src_ip, country_code, country, city, protocol, username, password, command, url, client_version, duration_s, file_name, sha256` (`file_name`/`sha256` on `upload` rows; `url` there is the SCP target path). It's what the dashboard stores (fields capped and stripped of control characters by `parse_cowrie`), not Cowrie's raw JSON, which stays on the honeypot. Attacker text that starts with `=`, `+`, `-` or `@` gets a leading `'`, so Excel and LibreOffice never run it as a formula; strip that `'` if you load the file with code. The file is UTF-8 with a BOM and streams in pages, so a 30-day export doesn't load everything into memory. The static demo ships a 24 h simulated file instead.
 

@@ -12,6 +12,7 @@ Serves the rack dashboard (a slideshow of screens) and feeds its screens:
     (bearer token); the page reads them back from GET /api/smart.
   * Compute: the same agents POST a metrics sample every 10 seconds to
     /api/metrics; GET /api/metrics returns the latest + ~1 h of history.
+  * Space: Hubble and Webb positions and scheduled targets at GET /api/space (space.py).
   * Honeypot: Cowrie events aggregated over 24 h at GET /api/honeypot, attack
     patterns over 30 days at GET /api/honeypot/patterns, and every stored event as
     CSV at GET /api/honeypot/export.csv[?days=N]. Simulated (honeypot.Simulator)
@@ -41,6 +42,7 @@ import creds
 import honeypot
 import metrics
 import smart
+import space
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_REPORT_BYTES = 8 * 1024 * 1024
@@ -208,7 +210,7 @@ def syslog_listener(port, pipeline):
 
 
 def make_handler(broker, page_config, smart_store=None, agent_token=None, metrics_store=None, deploy=None, cred_store=None,
-                 honeypot_store=None, deploy_keys=None):
+                 honeypot_store=None, deploy_keys=None, space_feed=None):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(STATIC_DIR), **kw)
@@ -241,6 +243,10 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(200, honeypot_store.patterns_view() if honeypot_store else {"source": None})
             if path == "/api/honeypot/export.csv":
                 return self._honeypot_csv()
+            if path == "/api/space":
+                if not space_feed:
+                    return self._json(404, {"error": "space section off"})
+                return self._json(200, space_feed.view())
             return super().do_GET()
 
         def _honeypot_csv(self):
@@ -446,6 +452,8 @@ def main():
     ap.add_argument("--demo", action="store_true", help="serve the page in demo mode (simulated data)")
     ap.add_argument("--token-file", help="file holding the SMART agents' bearer token "
                     "(default: $CREDENTIALS_DIRECTORY/agent-token when run by systemd)")
+    ap.add_argument("--space", choices=["live", "off"], default="live",
+                    help="space section data: fetch from NASA/CelesTrak/JPL (live, default) or off")
     ap.add_argument("--state-dir", help="where SMART reports are kept (default: $STATE_DIRECTORY or ./state)")
     ap.add_argument("--smart-order", default="", help="comma-separated host display order, e.g. opnsense,optiplex-management,homeshare,backup-compute")
     ap.add_argument("--smart-stale", type=float, default=45, help="minutes without a report before a host is marked stale")
@@ -514,6 +522,16 @@ def main():
     if honeypot_feed.reset_note:
         log.info(honeypot_feed.reset_note)
 
+    # Space section: Hubble/Webb positions and scheduled targets, fetched here on a timer
+    # (NASA ACROSS, CelesTrak, JPL Horizons) and cached in state/space.json. --demo: generated.
+    space_mode = "demo" if args.demo else args.space
+    space_feed = None
+    if space_mode != "off":
+        space_feed = space.SpaceFeed(state_dir, mode=space_mode)
+        if space_mode == "live":
+            space_feed.start_background()
+        log.info("space: %s", space_mode)
+
     broker = Broker()
     if not args.demo:
         pipeline = Pipeline(args, geo, broker)
@@ -526,7 +544,7 @@ def main():
         threading.Thread(target=report, daemon=True).start()
 
     server = ThreadingHTTPServer((args.bind, args.http_port), make_handler(broker, page_config, smart_store, agent_token, metrics_store, deploy, cred_store,
-                                                                         honeypot_feed, metrics.PendingDeployKeys()))
+                                                                         honeypot_feed, metrics.PendingDeployKeys(), space_feed))
     server.daemon_threads = True
     log.info("dashboard at http://%s:%d/  (mode: %s)", socket.gethostname(), args.http_port, page_config["mode"])
     server.serve_forever()
