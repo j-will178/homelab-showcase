@@ -273,7 +273,7 @@ class SpaceInfo:
                 info["sources"].append("DSS2 via CDS")
         with self.lock:
             self.data["targets"][self.target_key(tel, visit)] = info
-        if prog and self.program(tel, prog) is None:
+        if prog and self.program(tel, prog) is None and not (visit.get("program") or {}).get("title"):
             p = self._program(tel, prog)
             with self.lock:
                 self.data["programs"][f"{tel}:{prog}"] = p
@@ -298,6 +298,11 @@ class SpaceInfo:
         out["image"] = f"api/space/image?k={info['image'][:-4]}" if info.get("image") else None
         out["sources"] = list(info.get("sources") or [])
         prog = visit.get("proposal")
+        sched = visit.get("program") or {}
+        if sched.get("title"):                    # from Space Telescope Live's schedule: no lookup needed
+            out["program"] = dict(sched, url=PROGRAM_URL[tel].format(id=sched["id"]))
+            out["sources"].append("STScI")
+            return out
         p = self.program(tel, prog) if prog else None
         if p:
             out["program"] = p

@@ -244,6 +244,7 @@
     } else {
       const badges = [f.type, f.morph].filter(Boolean).map((b, i) => `<span class="badge${i ? ' dim' : ''}" style="--tc:${c}">${esc(b)}</span>`);
       if (!f.resolved) badges.push('<span class="badge dim">Survey field · no catalog match</span>');
+      if (v.category === 'Calibration' || /calibration|wavefront/i.test(v.visit_type || '')) badges.push(`<span class="badge dim">${esc(v.visit_type || 'Calibration')}</span>`);
       if (badges.length) lines.push(`<p>${badges.join('')}</p>`);
       const facts = [f.distance && `<b>${esc(f.distance)}</b>`, f.aliases?.length && `also called ${esc(f.aliases.join(', '))}`].filter(Boolean);
       if (facts.length) lines.push(`<p class="fact">${facts.join(' · ')}</p>`);
@@ -251,7 +252,7 @@
       if (f.nearest) lines.push(`<p class="fact"><b>Nearest known object:</b> ${esc(f.nearest.name)}${f.nearest.type ? ` (${esc(f.nearest.type.toLowerCase())})` : ''}, ${f.nearest.sep_arcmin}′ away${f.nearest.distance ? ` · ${esc(f.nearest.distance)}` : ''}</p>`);
       const p = f.program;
       if (p) lines.push(`<p class="fact"><b>Why:</b> <a href="${esc(p.url)}" target="_blank" rel="noopener">program ${esc(p.id)}</a>` +
-        `${p.title ? ` · “${esc(p.title)}”` : ''}${p.pi ? ` · PI ${esc(p.pi)}` : ''}</p>`);
+        `${p.title ? ` · “${esc(p.title)}”` : ''}${p.pi ? ` · PI ${esc(p.pi)}` : ''}${p.category ? ` · ${esc(p.category)}` : ''}</p>`);
       if (f.sources?.length) lines.push(`<p class="src">${esc(f.sources.join(' · '))}</p>`);
     }
     return `<div class="info"><figure>${img}<figcaption>Sky survey image (DSS2) · 10′ across · not ${NAME[t.id] || t.name}'s own</figcaption></figure>` +
@@ -285,7 +286,8 @@
   function chips(data) {
     const out = [];
     if (data.mode === 'demo') out.push('<span class="chip warn">simulated data</span>');
-    out.push('<span class="chip">planned schedules · NASA ACROSS</span>');
+    const via = [...new Set(Object.entries(data.sources || {}).filter(([k, s]) => k.startsWith('schedule:') && s.via).map(([, s]) => s.via))];
+    out.push(`<span class="chip">planned schedules · ${via.length ? via.map(v => v === 'across' ? 'NASA ACROSS' : 'STScI Space Telescope Live').join(' + ') : 'STScI / NASA'}</span>`);
     for (const [k, s] of Object.entries(data.sources || {})) if (s.error) out.push(`<span class="chip warn" title="${esc(s.error)}">${esc(k)}: unavailable</span>`);
     out.push(`<span class="chip">updated ${hm(data.generated_at)}</span>`);
     $('spChips').innerHTML = out.join('');

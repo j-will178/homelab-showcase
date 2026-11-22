@@ -1,0 +1,512 @@
+{
+ "current": {
+  "data": {
+   "id": "01M76DK5FH62X81BK7D974Q1NB",
+   "proposal": {
+    "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+    "proposalID": "9645",
+    "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+    "proposalType": {
+     "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+     "title": "General Observation",
+     "code": "GO"
+    },
+    "scientificCategory": {
+     "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+     "title": "High-Redshift Galaxies And The Distant Universe"
+    },
+    "secondaryScientificCategory": null,
+    "scientificKeywords": null,
+    "instruments": [
+     {
+      "id": "01HD719CY055CJWRJGBYEEGZT5",
+      "title": "Near-Infrared Spectrograph",
+      "code": "NIRSPEC"
+     }
+    ],
+    "primaryInvestigator": {
+     "id": "01HMA4S2YS6J305M65GQ9D89NP",
+     "formalName": "Prof. Tommaso L. Treu",
+     "honorific": "Prof.",
+     "firstName": "Tommaso",
+     "middleName": "L.",
+     "lastName": "Treu",
+     "suffix": ""
+    }
+   },
+   "scheduledStartTime": "2026-11-21T21:15:40-05:00",
+   "scheduledEndTime": "2026-11-22T14:39:45-05:00",
+   "scheduledDurationInSeconds": 62645,
+   "scheduledDurationInSecondsFormatted": "17h24m5s",
+   "executionStatus": null,
+   "executedStartTime": null,
+   "executedEndTime": null,
+   "executedDurationInSeconds": null,
+   "executedDurationInSecondsFormatted": null,
+   "boreSightRightAscensionInDegrees": "3.600808022879408",
+   "boreSightDeclinationInDegrees": "-30.2261870377222",
+   "targets": [
+    {
+     "id": "01M76DK5FK5Q7QC5Y4XAJYFV67",
+     "name": "z6uf_targets_finalcat",
+     "standardName": "",
+     "category": null,
+     "type": "FIXED",
+     "rightAscensionInDegrees": "3.582299166666667",
+     "declinationInDegrees": "-30.383158333333313"
+    }
+   ]
+  },
+  "_pagination": {
+   "nextRecord": {
+    "id": "01M76DK5A6VX1BSCZZ2X6FQN8R",
+    "startTime": "2026-11-22T14:39:46-05:00",
+    "endTime": "2026-11-22T15:08:25-05:00"
+   },
+   "previousRecord": {
+    "id": "01M76DK5FGTR0SJY22KVW9ZQSH",
+    "startTime": "2026-11-21T03:51:34-05:00",
+    "endTime": "2026-11-21T21:15:39-05:00"
+   }
+  },
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "schedule_2026-11-22T0": {
+  "data": [
+   {
+    "id": "01M76DK5FGTR0SJY22KVW9ZQSH",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+     "createTime": "2026-11-11T18:02:54.146661-05:00",
+     "updateTime": "2026-11-11T18:02:54.394124-05:00",
+     "proposalID": "9645",
+     "proposalType": {
+      "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+      "title": "General Observation",
+      "code": "GO"
+     },
+     "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+     "scientificCategory": {
+      "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+      "createTime": "2025-05-12T14:45:25.169534-04:00",
+      "updateTime": null,
+      "title": "High-Redshift Galaxies And The Distant Universe"
+     },
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719CY055CJWRJGBYEEGZT5",
+       "title": "Near-Infrared Spectrograph",
+       "code": "NIRSPEC"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": {
+      "id": "01HMA4S2YS6J305M65GQ9D89NP",
+      "createTime": "2024-01-16T17:02:57.369446-05:00",
+      "updateTime": null,
+      "properID": "7250",
+      "orcidID": "http://orcid.org/0000-0002-8460-0390",
+      "formalName": "Prof. Tommaso L. Treu",
+      "honorific": "Prof.",
+      "firstName": "Tommaso",
+      "middleName": "L.",
+      "lastName": "Treu",
+      "suffix": ""
+     }
+    },
+    "scheduledStartTime": "2026-11-21T03:51:34-05:00",
+    "scheduledEndTime": "2026-11-21T21:15:39-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "3.600808022879408",
+    "boreSightDeclinationInDegrees": "-30.2261870377222",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_TARGETED_FIXED",
+     "title": "Prime Targeted Fixed"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "z6uf_targets_finalcat",
+      "standardName": "",
+      "category": null,
+      "type": "FIXED",
+      "rightAscensionInDegrees": "3.582299166666667",
+      "declinationInDegrees": "-30.383158333333313",
+      "background": false
+     }
+    ]
+   },
+   {
+    "id": "01M76DK5FH62X81BK7D974Q1NB",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+     "createTime": "2026-11-11T18:02:54.146661-05:00",
+     "updateTime": "2026-11-11T18:02:54.394124-05:00",
+     "proposalID": "9645",
+     "proposalType": {
+      "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+      "title": "General Observation",
+      "code": "GO"
+     },
+     "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+     "scientificCategory": {
+      "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+      "createTime": "2025-05-12T14:45:25.169534-04:00",
+      "updateTime": null,
+      "title": "High-Redshift Galaxies And The Distant Universe"
+     },
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719CY055CJWRJGBYEEGZT5",
+       "title": "Near-Infrared Spectrograph",
+       "code": "NIRSPEC"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": {
+      "id": "01HMA4S2YS6J305M65GQ9D89NP",
+      "createTime": "2024-01-16T17:02:57.369446-05:00",
+      "updateTime": null,
+      "properID": "7250",
+      "orcidID": "http://orcid.org/0000-0002-8460-0390",
+      "formalName": "Prof. Tommaso L. Treu",
+      "honorific": "Prof.",
+      "firstName": "Tommaso",
+      "middleName": "L.",
+      "lastName": "Treu",
+      "suffix": ""
+     }
+    },
+    "scheduledStartTime": "2026-11-21T21:15:40-05:00",
+    "scheduledEndTime": "2026-11-22T14:39:45-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "3.600808022879408",
+    "boreSightDeclinationInDegrees": "-30.2261870377222",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_TARGETED_FIXED",
+     "title": "Prime Targeted Fixed"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "z6uf_targets_finalcat",
+      "standardName": "",
+      "category": null,
+      "type": "FIXED",
+      "rightAscensionInDegrees": "3.582299166666667",
+      "declinationInDegrees": "-30.383158333333313",
+      "background": false
+     }
+    ]
+   },
+   {
+    "id": "01M76DK5A6VX1BSCZZ2X6FQN8R",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01KWF3TRMPFPN91KBNJDZS45NC",
+     "createTime": "2026-07-01T11:12:47.25485-04:00",
+     "updateTime": null,
+     "proposalID": "12636",
+     "proposalType": {
+      "id": "01HH09Q98B8AFVNE9FCT5A085Z",
+      "title": "Calibration",
+      "code": "CAL"
+     },
+     "title": "JWST Routine Wavefront Sensing and Control for Cycle 5",
+     "scientificCategory": null,
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719NAW2YEHMRNSTB53QD77",
+       "title": "Near-Infrared Camera",
+       "code": "NIRCAM"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": null
+    },
+    "scheduledStartTime": "2026-11-22T14:39:46-05:00",
+    "scheduledEndTime": "2026-11-22T15:08:25-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "4.342453050151534",
+    "boreSightDeclinationInDegrees": "-25.98315510569289",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_WFSC_ROUTINE",
+     "title": "Prime WFSC Routine"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "2MASS-00165617-2605126",
+      "standardName": "",
+      "category": "Calibration",
+      "type": "FIXED",
+      "rightAscensionInDegrees": "4.234105",
+      "declinationInDegrees": "-26.08685555555553",
+      "background": false
+     }
+    ]
+   },
+   {
+    "id": "01M76DK5NXPS9JWSAKV0N3AHG0",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+     "createTime": "2026-11-11T18:02:54.146661-05:00",
+     "updateTime": "2026-11-11T18:02:54.394124-05:00",
+     "proposalID": "9645",
+     "proposalType": {
+      "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+      "title": "General Observation",
+      "code": "GO"
+     },
+     "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+     "scientificCategory": {
+      "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+      "createTime": "2025-05-12T14:45:25.169534-04:00",
+      "updateTime": null,
+      "title": "High-Redshift Galaxies And The Distant Universe"
+     },
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719CY055CJWRJGBYEEGZT5",
+       "title": "Near-Infrared Spectrograph",
+       "code": "NIRSPEC"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": {
+      "id": "01HMA4S2YS6J305M65GQ9D89NP",
+      "createTime": "2024-01-16T17:02:57.369446-05:00",
+      "updateTime": null,
+      "properID": "7250",
+      "orcidID": "http://orcid.org/0000-0002-8460-0390",
+      "formalName": "Prof. Tommaso L. Treu",
+      "honorific": "Prof.",
+      "firstName": "Tommaso",
+      "middleName": "L.",
+      "lastName": "Treu",
+      "suffix": ""
+     }
+    },
+    "scheduledStartTime": "2026-11-22T15:08:26-05:00",
+    "scheduledEndTime": "2026-11-23T08:35:34-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "3.600808022879408",
+    "boreSightDeclinationInDegrees": "-30.2261870377222",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_TARGETED_FIXED",
+     "title": "Prime Targeted Fixed"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "z6uf_targets_finalcat",
+      "standardName": "",
+      "category": null,
+      "type": "FIXED",
+      "rightAscensionInDegrees": "3.582299166666667",
+      "declinationInDegrees": "-30.383158333333313",
+      "background": false
+     }
+    ]
+   }
+  ],
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "schedule_2026-11-21T0": {
+  "data": [
+   {
+    "id": "01M76DK5F1D49SV94KV5K80VGQ",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+     "createTime": "2026-11-11T18:02:54.146661-05:00",
+     "updateTime": "2026-11-11T18:02:54.394124-05:00",
+     "proposalID": "9645",
+     "proposalType": {
+      "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+      "title": "General Observation",
+      "code": "GO"
+     },
+     "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+     "scientificCategory": {
+      "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+      "createTime": "2025-05-12T14:45:25.169534-04:00",
+      "updateTime": null,
+      "title": "High-Redshift Galaxies And The Distant Universe"
+     },
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719CY055CJWRJGBYEEGZT5",
+       "title": "Near-Infrared Spectrograph",
+       "code": "NIRSPEC"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": {
+      "id": "01HMA4S2YS6J305M65GQ9D89NP",
+      "createTime": "2024-01-16T17:02:57.369446-05:00",
+      "updateTime": null,
+      "properID": "7250",
+      "orcidID": "http://orcid.org/0000-0002-8460-0390",
+      "formalName": "Prof. Tommaso L. Treu",
+      "honorific": "Prof.",
+      "firstName": "Tommaso",
+      "middleName": "L.",
+      "lastName": "Treu",
+      "suffix": ""
+     }
+    },
+    "scheduledStartTime": "2026-11-20T10:24:25-05:00",
+    "scheduledEndTime": "2026-11-21T03:51:33-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "3.600808022879408",
+    "boreSightDeclinationInDegrees": "-30.2261870377222",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_TARGETED_FIXED",
+     "title": "Prime Targeted Fixed"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "z6uf_targets_finalcat",
+      "standardName": "",
+      "category": null,
+      "type": "FIXED",
+      "rightAscensionInDegrees": "3.582299166666667",
+      "declinationInDegrees": "-30.383158333333313",
+      "background": false
+     }
+    ]
+   },
+   {
+    "id": "01M76DK5FGTR0SJY22KVW9ZQSH",
+    "deleteTime": null,
+    "proposal": {
+     "id": "01M76DK5E2FEZZ29GP4WP3F2RG",
+     "createTime": "2026-11-11T18:02:54.146661-05:00",
+     "updateTime": "2026-11-11T18:02:54.394124-05:00",
+     "proposalID": "9645",
+     "proposalType": {
+      "id": "01HH09MVF3HVFQ7PJ9M43K43VE",
+      "title": "General Observation",
+      "code": "GO"
+     },
+     "title": "The Core of the Iceberg: the Physics of Sub-L* Galaxies in the First Billion Years",
+     "scientificCategory": {
+      "id": "01JV2X1THHX2A6EK80QFYKKC4M",
+      "createTime": "2025-05-12T14:45:25.169534-04:00",
+      "updateTime": null,
+      "title": "High-Redshift Galaxies And The Distant Universe"
+     },
+     "secondaryScientificCategory": null,
+     "scientificKeywords": null,
+     "instruments": [
+      {
+       "id": "01HD719CY055CJWRJGBYEEGZT5",
+       "title": "Near-Infrared Spectrograph",
+       "code": "NIRSPEC"
+      }
+     ],
+     "externalAllocationOrbit": null,
+     "internalAllocationOrbit": null,
+     "parallelAllocationOrbit": null,
+     "primaryInvestigator": {
+      "id": "01HMA4S2YS6J305M65GQ9D89NP",
+      "createTime": "2024-01-16T17:02:57.369446-05:00",
+      "updateTime": null,
+      "properID": "7250",
+      "orcidID": "http://orcid.org/0000-0002-8460-0390",
+      "formalName": "Prof. Tommaso L. Treu",
+      "honorific": "Prof.",
+      "firstName": "Tommaso",
+      "middleName": "L.",
+      "lastName": "Treu",
+      "suffix": ""
+     }
+    },
+    "scheduledStartTime": "2026-11-21T03:51:34-05:00",
+    "scheduledEndTime": "2026-11-21T21:15:39-05:00",
+    "executionStatus": null,
+    "boreSightRightAscensionInDegrees": "3.600808022879408",
+    "boreSightDeclinationInDegrees": "-30.2261870377222",
+    "baselineVisitType": {
+     "code": "PRIME"
+    },
+    "visitType": {
+     "code": "PRIME_TARGETED_FIXED",
+     "title": "Prime Targeted Fixed"
+    },
+    "internalTarget": false,
+    "targets": [
+     {
+      "name": "z6uf_targets_finalcat",
+      "standardName": "",
+      "category": null,
+      "type": "FIXED",
+      "rightAscensionInDegrees": "3.582299166666667",
+      "declinationInDegrees": "-30.383158333333313",
+      "background": false
+     }
+    ]
+   }
+  ],
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "forbidden": {
+  "_meta": {
+   "code": 403,
+   "status": "Forbidden",
+   "message": "forbidden: timestamp outside allowed time range"
+  }
+ }
+}

@@ -148,7 +148,7 @@ class FeedTest(unittest.TestCase):
     def test_live_refresh_view_and_cache(self):
         with tempfile.TemporaryDirectory() as d:
             net = FakeNet()
-            f = space.SpaceFeed(d, opener=net, poster=offline, fetch_bytes=offline)
+            f = space.SpaceFeed(d, opener=net, poster=offline, fetch_bytes=offline, stl_opener=offline)
             f.refresh(now=T)
             q = net.observation_query
             self.assertEqual(q["observatory_ids"], ["obs-JWST"])       # last telescope asked
@@ -167,12 +167,12 @@ class FeedTest(unittest.TestCase):
             f.refresh(now=T + 1800)
             self.assertEqual(len(net.calls), n)
             # a restart reads the cache instead of refetching
-            g = space.SpaceFeed(d, opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline)
+            g = space.SpaceFeed(d, opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline, stl_opener=offline)
             self.assertEqual(g.view(now=T)["telescopes"][0]["current"]["target"], "Messier 51")
 
     def test_one_source_down_keeps_the_others_and_retries_later(self):
         net = FakeNet(fail=["celestrak"])
-        f = space.SpaceFeed(None, opener=net, poster=offline, fetch_bytes=offline)
+        f = space.SpaceFeed(None, opener=net, poster=offline, fetch_bytes=offline, stl_opener=offline)
         f.refresh(now=T)
         v = f.view(now=T)
         self.assertIsNone(v["telescopes"][0]["position"])
@@ -185,13 +185,13 @@ class FeedTest(unittest.TestCase):
         self.assertIsNotNone(f.view(now=T)["telescopes"][0]["position"])
 
     def test_schedule_error_names_the_failing_request(self):
-        f = space.SpaceFeed(None, opener=FakeNet(fail=["/observatory/"]), poster=offline, fetch_bytes=offline)
+        f = space.SpaceFeed(None, opener=FakeNet(fail=["/observatory/"]), poster=offline, fetch_bytes=offline, stl_opener=offline)
         f.refresh(now=T)
         err = f.view(now=T)["sources"]["schedule:hst"]["error"]
-        self.assertTrue(err.startswith("api.across.sciencecloud.nasa.gov/v1/observatory/: "), err)
+        self.assertIn("across: api.across.sciencecloud.nasa.gov/v1/observatory/: ", err)
 
     def test_demo_respects_pointing_limits(self):
-        f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline)
+        f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline, stl_opener=offline)
         for k in range(0, 400, 37):                                     # different days through the year
             v = f.view(now=T + k * 86400)
             for t in v["telescopes"]:
@@ -205,3 +205,71 @@ class FeedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FIX = json.loads((Path(__file__).with_name("fixtures_stl.json")).read_text())
+T_STL = datetime(2026, 11, 22, 7, 55, tzinfo=timezone.utc).timestamp()     # when the fixture was captured
+
+
+class StlTest(unittest.TestCase):
+    """Space Telescope Live, from replies captured on 2026-11-22 (tests/fixtures_stl.json)."""
+
+    def test_time_format_and_parse(self):
+        self.assertEqual(space.stl_time(T_STL), "2026-11-22T7:50:00Z")
+        exp = space.stl_observations(FIX["schedule_2026-11-22T0"]["data"])
+        self.assertEqual(len(exp), 4)
+        e = exp[1]
+        self.assertEqual(e["target"], "z6uf_targets_finalcat")
+        self.assertAlmostEqual(e["ra"], 3.6008, places=3)                  # boresight, not the target catalog position
+        self.assertEqual(e["instrument"], "NIRSpec")
+        self.assertEqual(e["program"]["pi"], "Prof. Tommaso L. Treu")
+        self.assertTrue(e["program"]["title"].startswith("The Core of the Iceberg"))
+        self.assertEqual(e["program"]["category"], "High-Redshift Galaxies And The Distant Universe")
+        cal = exp[2]
+        self.assertEqual((cal["category"], cal["program"]["type"], cal["instrument"]), ("Calibration", "CAL", "NIRCam"))
+
+    def stl(self, fail=False):
+        calls = []
+
+        def opener(url, headers):
+            calls.append((url, headers["endpoint"]))
+            if fail:
+                raise OSError("HTTP Error 503")
+            day = headers["endpoint"].split("/")[-1][:10]
+            key = f"schedule_{day}T0"
+            return json.dumps(FIX.get(key) or {"data": [], "_meta": {"code": 200}})
+        return opener, calls
+
+    def test_feed_uses_stl_first(self):
+        opener, calls = self.stl()
+        net = FakeNet()
+        f = space.SpaceFeed(None, opener=net, poster=offline, fetch_bytes=offline, stl_opener=opener)
+        f.refresh(now=T_STL)
+        self.assertEqual(calls[0], ("https://spacetelescopelive.org/api/get/hubble", "schedule/next24hours/2026-11-19T7:50:00Z"))
+        self.assertEqual(calls[-1], ("https://spacetelescopelive.org/api/get/webb", "schedule/next24hours/2026-11-22T7:50:00Z"))
+        self.assertFalse(any("/observation/" in u for u in net.calls))         # ACROSS not needed
+        v = f.view(now=T_STL)
+        webb = v["telescopes"][1]
+        self.assertEqual(v["sources"]["schedule:jwst"]["via"], "spacetelescopelive")
+        self.assertEqual(webb["current"]["target"], "z6uf_targets_finalcat")
+        self.assertEqual(webb["next"][0]["category"], "Calibration")
+        self.assertEqual(webb["recent"][0]["target"], "z6uf_targets_finalcat") if webb["recent"] else None
+
+    def test_falls_back_to_across_and_keeps_both_errors(self):
+        opener, _ = self.stl(fail=True)
+        f = space.SpaceFeed(None, opener=FakeNet(), poster=offline, fetch_bytes=offline, stl_opener=opener)
+        f.refresh(now=T)
+        src = f.view(now=T)["sources"]["schedule:hst"]
+        self.assertEqual((src["via"], src["error"]), ("across", None))
+        f2 = space.SpaceFeed(None, opener=FakeNet(fail=["/observatory/"]), poster=offline, fetch_bytes=offline, stl_opener=opener)
+        f2.refresh(now=T)
+        err = f2.view(now=T)["sources"]["schedule:hst"]["error"]
+        self.assertIn("spacetelescopelive: spacetelescopelive.org/api/get/hubble", err)
+        self.assertIn("across: api.across.sciencecloud.nasa.gov/v1/observatory/", err)
+
+    def test_forbidden_reply_is_an_error(self):
+        f = space.SpaceFeed(None, opener=FakeNet(), poster=offline, fetch_bytes=offline,
+                            stl_opener=lambda u, h: json.dumps(FIX["forbidden"]))
+        with self.assertRaises(RuntimeError) as cm:
+            f.fetch_stl(space.TELESCOPES[1], T_STL)
+        self.assertIn("403", str(cm.exception))

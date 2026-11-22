@@ -36,15 +36,19 @@ import space_info
 log = logging.getLogger("space")
 
 ACROSS = "https://api.across.sciencecloud.nasa.gov/v1"
+# STScI's Space Telescope Live (spacetelescopelive.org), the public "what are Hubble and Webb observing" app.
+# Its JSON back end isn't documented: GET /api/get/<webb|hubble> with an `endpoint:` header choosing the data
+# ("current", "schedule/next24hours/<UTC time>", or an observation id). Times far in the future get 403.
+STL = "https://spacetelescopelive.org/api/get/{slug}"
 CELESTRAK_TLE = "https://celestrak.org/NORAD/elements/gp.php?CATNR={norad}&FORMAT=TLE"
 HORIZONS = "https://ssd.jpl.nasa.gov/api/horizons.api"
 USER_AGENT = "homelab-rack-dashboard/1 (+https://github.com/j-will178/homelab)"
 
 TELESCOPES = [
     # across: observatory name for the ACROSS lookup; sun: allowed angle from the Sun (degrees)
-    {"id": "hst", "name": "Hubble", "across": "HST", "orbit": "tle", "norad": 20580,
+    {"id": "hst", "name": "Hubble", "stl": "hubble", "across": "HST", "orbit": "tle", "norad": 20580,
      "sun": [50, 180], "hst_uuid": "eb43bec9-0002-4c05-b294-de71453d95b6"},
-    {"id": "jwst", "name": "Webb", "across": "JWST", "orbit": "horizons", "naif": -170, "sun": [85, 135]},
+    {"id": "jwst", "name": "Webb", "stl": "webb", "across": "JWST", "orbit": "horizons", "naif": -170, "sun": [85, 135]},
 ]
 EVERY = {"schedule": 3600, "tle": 12 * 3600, "horizons": 24 * 3600}
 RETRY = 15 * 60                     # after a failed fetch
@@ -221,6 +225,47 @@ def across_observations(items, instruments=None):
     return sorted(best.values(), key=lambda r: r["begin"])
 
 
+INSTRUMENT_NAMES = {"NIRCAM": "NIRCam", "NIRSPEC": "NIRSpec", "MIRI": "MIRI", "NIRISS": "NIRISS", "FGS": "FGS",
+                    "WFC3": "WFC3", "ACS": "ACS", "COS": "COS", "STIS": "STIS"}
+
+
+def stl_time(t):
+    """Space Telescope Live writes hours without a leading zero: 2026-11-22T7:50:00Z (10-minute steps)."""
+    d = datetime.fromtimestamp(t - t % 600, timezone.utc)
+    return f"{d:%Y-%m-%d}T{d.hour}:{d:%M}:00Z"
+
+
+def stl_observations(items):
+    """Space Telescope Live schedule records -> exposures like across_observations(), plus the program
+    (title, PI, category) and the visit type, which ACROSS doesn't have."""
+    out = {}
+    for o in items or []:
+        if not isinstance(o, dict) or o.get("deleteTime"):
+            continue
+        try:
+            begin, end = _ts(o["scheduledStartTime"]), _ts(o["scheduledEndTime"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        tg = next((t for t in o.get("targets") or [] if not t.get("background")), None) or {}
+        name = _text(tg.get("standardName")) or _text(tg.get("name")) or "unnamed"
+        ra = _num(o.get("boreSightRightAscensionInDegrees"), 0, 360)
+        dec = _num(o.get("boreSightDeclinationInDegrees"), -90, 90)
+        if ra is None or dec is None:
+            ra, dec = _num(tg.get("rightAscensionInDegrees"), 0, 360), _num(tg.get("declinationInDegrees"), -90, 90)
+        p = o.get("proposal") or {}
+        insts = [INSTRUMENT_NAMES.get(str(i.get("code", "")).upper()) or _text(i.get("title")) for i in p.get("instruments") or []]
+        pi = (p.get("primaryInvestigator") or {}).get("formalName")
+        cat = (p.get("scientificCategory") or {}).get("title") or (p.get("proposalType") or {}).get("title")
+        program = {"id": _text(p.get("proposalID")), "title": _text(p.get("title"), 200), "pi": _text(pi),
+                   "category": _text(cat), "type": _text((p.get("proposalType") or {}).get("code"))} if p else None
+        out[o.get("id") or (name, begin)] = {
+            "target": name, "begin": begin, "end": max(end, begin), "ra": ra, "dec": dec,
+            "instrument": ", ".join(i for i in insts if i), "proposal": program and program["id"], "program": program,
+            "status": _text(o.get("executionStatus")), "visit_type": _text((o.get("visitType") or {}).get("title")),
+            "category": _text(tg.get("category")), "created": 0}
+    return sorted(out.values(), key=lambda r: r["begin"])
+
+
 def visits(exposures):
     """Consecutive exposures of one target -> one visit (Hubble splits a visit into many)."""
     out = []
@@ -234,14 +279,16 @@ def visits(exposures):
                 v["ra"], v["dec"] = e["ra"], e["dec"]
         else:
             out.append({"target": e["target"], "begin": e["begin"], "end": e["end"], "ra": e["ra"], "dec": e["dec"],
-                        "instruments": [e["instrument"]] if e["instrument"] else [], "proposal": e["proposal"]})
+                        "instruments": [e["instrument"]] if e["instrument"] else [], "proposal": e["proposal"],
+                        "program": e.get("program"), "category": e.get("category"), "visit_type": e.get("visit_type")})
     return out
 
 
 def describe(v, t):
     """A visit for the API: times as ISO, plus ecliptic direction and angle from the Sun."""
     d = {"target": v["target"], "begin": _iso(v["begin"]), "end": _iso(v["end"]),
-         "instrument": ", ".join(v["instruments"]), "proposal": v.get("proposal"), "ra": None, "dec": None}
+         "instrument": ", ".join(v["instruments"]), "proposal": v.get("proposal"), "ra": None, "dec": None,
+         "category": v.get("category"), "visit_type": v.get("visit_type")}
     if v["ra"] is not None and v["dec"] is not None:
         lon, lat = eq_to_ecl(v["ra"], v["dec"], t)
         s = sun(t)
@@ -312,10 +359,11 @@ def demo_webb_rows(t):
 class SpaceFeed:
     """Background fetcher + cache. mode: 'live' (fetch, cache in state_dir), 'demo' (generated)."""
 
-    def __init__(self, state_dir=None, mode="live", opener=None, poster=None, fetch_bytes=None):
+    def __init__(self, state_dir=None, mode="live", opener=None, poster=None, fetch_bytes=None, stl_opener=None):
         self.mode = mode
         self.path = Path(state_dir) / "space.json" if state_dir else None
         self.open = opener or self._http
+        self.open_stl = stl_opener or self._http          # (url, headers) -> text
         # Facts about each target for the info panel (SIMBAD, Wikipedia, MAST, sky cutouts).
         self.info = space_info.SpaceInfo(state_dir, opener=self.open, poster=poster or self._http_post,
                                          fetch_bytes=fetch_bytes or self._http_bytes)
@@ -329,8 +377,9 @@ class SpaceFeed:
 
     # -- network
     @staticmethod
-    def _http(url):
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/plain"})
+    def _http(url, headers=None):
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/plain",
+                                                   **(headers or {})})
         with urllib.request.urlopen(req, timeout=30) as r:
             body = r.read(MAX_BYTES + 1)
         if len(body) > MAX_BYTES:
@@ -397,6 +446,23 @@ class SpaceFeed:
             ids[tel["id"]] = {"observatory": o["id"], "instruments": names}
         return ids[tel["id"]]
 
+    def fetch_stl(self, tel, now):
+        """Four 24-hour windows from Space Telescope Live: the past 3 days and the next day."""
+        url = STL.format(slug=tel["stl"])
+        items = []
+        for k in (3, 2, 1, 0):
+            hdr = {"endpoint": f"schedule/next24hours/{stl_time(now - k * 86400)}",
+                   "Referer": f"https://spacetelescopelive.org/{tel['stl']}"}
+            try:
+                res = json.loads(self.open_stl(url, hdr))
+            except Exception as e:       # noqa: BLE001 - re-raised with the request named
+                raise RuntimeError(f"spacetelescopelive.org/api/get/{tel['stl']} ({hdr['endpoint']}): {e}") from e
+            meta = res.get("_meta") or {}
+            if meta.get("code") not in (200, None) or not isinstance(res.get("data"), list):
+                raise RuntimeError(f"spacetelescopelive.org ({hdr['endpoint']}): {meta.get('code')} {meta.get('message')}")
+            items += res["data"]
+        return stl_observations(items)
+
     def fetch_schedule(self, tel, now):
         ref = self._across_id(tel)
         fmt = "%Y-%m-%dT%H:%M:%S.%f+0000"
@@ -421,14 +487,26 @@ class SpaceFeed:
         for tel in TELESCOPES:
             name = "schedule:" + tel["id"]
             if self._due(name, EVERY["schedule"], now):
-                try:
-                    exp = self.fetch_schedule(tel, now)
+                # Space Telescope Live first (also has program titles, PIs and execution status); ACROSS
+                # if it fails. `via` says which one the schedule came from; `error` keeps both failures.
+                errors = []
+                for via, fetch in (("spacetelescopelive", self.fetch_stl), ("across", self.fetch_schedule)):
+                    try:
+                        exp = fetch(tel, now)
+                    except Exception as e:   # noqa: BLE001 - try the next source
+                        errors.append(f"{via}: {e}")
+                        if via == "across":
+                            self.cache["across_ids"].pop(tel["id"], None)
+                        continue
                     with self.lock:
                         self.cache["schedules"][tel["id"]] = exp
                     self._record(name, now)
-                except Exception as e:   # noqa: BLE001 - any failure: keep the old data, retry later
-                    self._record(name, now, e)
-                    self.cache["across_ids"].pop(tel["id"], None)
+                    self.cache["sources"][name]["via"] = via
+                    if errors:
+                        log.info("space: %s schedule from %s (%s)", tel["id"], via, errors[0])
+                    break
+                else:
+                    self._record(name, now, " | ".join(errors))
         if self._due("tle", EVERY["tle"], now):
             try:
                 el = parse_tle(self.open(CELESTRAK_TLE.format(norad=TELESCOPES[0]["norad"])))
@@ -492,9 +570,10 @@ class SpaceFeed:
         with self.lock:
             cache = json.loads(json.dumps(self.cache))
         out = {"generated_at": _iso(now), "mode": self.mode, "sun": sun(now), "telescopes": [],
-               "sources": {} if demo else {k: {"ok_at": _iso(v.get("ok_at")), "error": v.get("error")}
+               "sources": {} if demo else {k: {"ok_at": _iso(v.get("ok_at")), "error": v.get("error"), "via": v.get("via")}
                                            for k, v in cache["sources"].items()},
-               "note": "Scheduled pointings from published plans (NASA ACROSS), not live telemetry."}
+               "note": "Scheduled pointings from published plans (STScI Space Telescope Live, or NASA ACROSS), "
+                       "not live telemetry."}
         for tel in TELESCOPES:
             d = {"id": tel["id"], "name": tel["name"], "sun_limits": tel["sun"], "position": None,
                  "current": None, "recent": [], "next": []}
