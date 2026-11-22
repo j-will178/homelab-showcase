@@ -414,7 +414,9 @@ class SpaceFeed:
         self.open = opener or self._http
         self.open_stl = stl_opener or self._http          # (url, headers) -> text
         # Facts about each target for the info panel (SIMBAD, Wikipedia, MAST, sky cutouts).
-        self.info = space_info.SpaceInfo(state_dir, opener=self.open, poster=poster or self._http_post,
+        # Target lookups get 10 s per request (vs 30 s): one unreachable service mustn't stall the queue.
+        quick = opener or (lambda url: self._http(url, timeout=10))
+        self.info = space_info.SpaceInfo(state_dir, opener=quick, poster=poster or self._http_post,
                                          fetch_bytes=fetch_bytes or self._http_bytes)
         self.lock = threading.Lock()
         self.cache = {"sources": {}, "schedules": {}, "tle": None, "horizons": None, "across_ids": {}, "stl_programs": {}}
@@ -436,10 +438,10 @@ class SpaceFeed:
 
     # -- network
     @staticmethod
-    def _http(url, headers=None):
+    def _http(url, headers=None, timeout=30):
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/plain",
                                                    **(headers or {})})
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             body = r.read(MAX_BYTES + 1)
         if len(body) > MAX_BYTES:
             raise ValueError("reply too large")

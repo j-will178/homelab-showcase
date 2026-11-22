@@ -89,7 +89,8 @@ class InfoTest(unittest.TestCase):
             self.assertEqual(got["aliases"], ["Great Barred Spiral Galaxy"])
             self.assertTrue(got["wiki"]["summary"].endswith("constellation Fornax. It was discovered in 1826."))
             self.assertEqual(got["program"]["title"], "Star formation in nearby barred spirals")
-            self.assertEqual(net.posts[0]["params"]["filters"][0]["values"], ["JWST"])
+            prog_q = [q for q in net.posts if q["service"] == "Mast.Caom.Filtered"][0]
+            self.assertEqual(prog_q["params"]["filters"][0]["values"], ["JWST"])
             self.assertTrue(got["image"].startswith("api/space/image?k="))
             k = got["image"].split("k=")[1]
             self.assertTrue(si.image_path(k).read_bytes().startswith(b"\xff\xd8"))
@@ -147,3 +148,66 @@ class InfoTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+GIF = b"GIF89a" + b"0" * 100
+
+
+class ImageTest(unittest.TestCase):
+    """Image order: the telescope's own public preview (MAST), then SkyView, then STScI DSS, then CDS."""
+
+    def make(self, d, previews=(), down=()):
+        calls = {"get": [], "post": []}
+
+        def opener(url):
+            calls["get"].append(url)
+            raise OSError("timed out")                              # every CDS lookup times out, as on the lab network
+
+        def poster(url, form):
+            calls["post"].append(json.loads(form["request"]))
+            return json.dumps({"data": list(previews)})
+
+        def fetch(url):
+            calls["get"].append(url)
+            for d_ in down:
+                if d_ in url:
+                    raise OSError("timed out")
+            return GIF if "dss_search" in url else JPEG
+        return space_info.SpaceInfo(d, opener, poster, fetch), calls
+
+    def test_telescope_preview_first(self):
+        with tempfile.TemporaryDirectory() as d:
+            rows = [{"obs_collection": "JWST", "instrument_name": "NIRCAM/IMAGE", "t_min": 60300.0, "proposal_id": "2561",
+                     "jpegURL": "mast:JWST/product/jw02561-o001_t001_nircam_clear-f444w_i2d.jpg", "dataRights": "PUBLIC", "calib_level": 3},
+                    {"obs_collection": "HST", "instrument_name": "ACS/WFC", "t_min": 56000.0, "proposal_id": "13495",
+                     "jpegURL": "mast:HST/product/x_drz.jpg", "dataRights": "PUBLIC", "calib_level": 3}]
+            si, calls = self.make(d, rows)
+            v = {"target": "z6uf_targets_finalcat", "ra": 3.60, "dec": -30.23, "proposal": None,
+                 "program": {"id": "9645", "title": "The Core of the Iceberg"}}
+            si.prefetch([("jwst", v)])
+            got = si.get("jwst", v)
+            self.assertEqual(got["image_caption"]["kind"], "telescope")
+            self.assertEqual(got["image_caption"]["text"], "Webb's own earlier image · NIRCAM/IMAGE · 2023 · program 2561")
+            self.assertIn("mast.stsci.edu/api/v0.1/Download/file?uri=mast:JWST/product/jw02561", calls["get"][-1])
+            q = calls["post"][0]
+            self.assertEqual((q["service"], q["params"]["position"]), ("Mast.Caom.Filtered.Position", "3.600000, -30.230000, 0.04"))
+            self.assertIn("SIMBAD", " ".join(si.data["targets"][si.target_key("jwst", v)]["errors"]))   # partial, not failed
+
+    def test_survey_fallbacks_and_gif(self):
+        with tempfile.TemporaryDirectory() as d:
+            si, calls = self.make(d, [], down=["skyview"])
+            v = {"target": "SDSS-J095418.15+471725.1", "ra": 148.5756, "dec": 47.2903, "proposal": None}
+            si.prefetch([("hst", v)])
+            got = si.get("hst", v)
+            self.assertEqual(got["image_caption"]["source"], "STScI DSS")
+            k = got["image"].split("k=")[1]
+            self.assertEqual(si.image_path(k).suffix, ".gif")
+            self.assertTrue(any("skyview.gsfc.nasa.gov" in u for u in calls["get"]))
+            # a restart retries the partial entry (SIMBAD failed) instead of waiting FAIL_RETRY
+            self.assertNotIn(si.target_key("hst", v), space_info.SpaceInfo(d, None, None, None).data["targets"])
+
+    def test_nothing_works_is_a_failure(self):
+        si, _ = self.make(None, [], down=["skyview", "dss_search", "hips2fits"])
+        v = {"target": "X", "ra": 1.0, "dec": 1.0, "proposal": None}
+        si.prefetch([("hst", v)])
+        self.assertIsNone(si.get("hst", v))                          # no image dir, no facts: failed, backs off

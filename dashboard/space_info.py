@@ -29,6 +29,7 @@ import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("space")
@@ -38,6 +39,19 @@ SIMBAD_TAP = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
 WIKI = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}?redirect=true"
 MAST = "https://mast.stsci.edu/api/v0/invoke"
 HIPS2FITS = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
+MAST_DOWNLOAD = "https://mast.stsci.edu/api/v0.1/Download/file?uri={uri}"
+# Survey cutouts, tried in order: NASA Goddard SkyView, then STScI's own DSS server. (CDS hips2fits is
+# last: every *.unistra.fr host times out from the lab's network, as of 2026-11-22.)
+SURVEY_URLS = [
+    ("NASA SkyView", "https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position={ra:.6f},{dec:.6f}"
+                     "&Size={fov}&Pixels=256&Return=JPEG"),
+    ("STScI DSS", "https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r={ra:.6f}&d={dec:.6f}&e=J2000"
+                  "&h={arcmin:.1f}&w={arcmin:.1f}&f=gif&c=none"),
+    ("CDS hips2fits", HIPS2FITS + "?hips=CDS%2FP%2FDSS2%2Fcolor&width=256&height=256&fov={fov}&projection=TAN"
+                      "&coordsys=icrs&ra={ra:.6f}&dec={dec:.6f}&format=jpg"),
+]
+PREVIEW_RADIUS = 0.04     # deg: an earlier public Hubble/Webb image counts if its pointing is within ~2.4'
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
 COLLECTION = {"hst": "HST", "jwst": "JWST"}
 PROGRAM_URL = {"hst": "https://www.stsci.edu/hst-program-info/program/?program={id}",
                "jwst": "https://www.stsci.edu/jwst/science-execution/program-information?id={id}"}
@@ -45,7 +59,7 @@ PROGRAM_URL = {"hst": "https://www.stsci.edu/hst-program-info/program/?program={
 FOV_DEG = 0.17            # ~10 arcmin cutout
 NEAR_DEG = 0.2            # "nearest known object" search radius
 MAX_ENTRIES = 3000
-MAX_IMAGES = 400
+MAX_IMAGES = 200
 BUDGET = 6                # new targets looked up per refresh (every 5 min)
 FAIL_RETRY = 6 * 3600     # after network trouble, don't retry a target for this long
 LY_PER_PC = 3.26156
@@ -151,12 +165,16 @@ class SpaceInfo:
         self.img_dir = Path(state_dir) / "space-img" if state_dir else None
         self.open, self.post, self.fetch_bytes = opener, poster, fetch_bytes
         self.lock = threading.Lock()
-        self.data = {"targets": {}, "programs": {}}
+        self.data = {"targets": {}, "programs": {}, "captions": {}}
         if self.path and self.path.exists():
             try:
                 self.data.update(json.loads(self.path.read_text()))
             except (OSError, ValueError) as e:
                 log.warning("space: ignoring unreadable info cache: %s", e)
+        self.captions = self.data.setdefault("captions", {})
+        # A restart (usually a deploy) retries failed and partial lookups instead of waiting out FAIL_RETRY.
+        for k in [k for k, v in self.data["targets"].items() if v.get("failed") or v.get("errors")]:
+            del self.data["targets"][k]
 
     # ------------------------------------------------------------ lookups (network)
     def _tap(self, query):
@@ -201,6 +219,7 @@ class SpaceInfo:
                 "distance": ly_text(ly)}
 
     def _wiki(self, titles):
+        titles = [t for t in titles if not re.search(r"[_]|\d{2}[:+-]\d{2}|^\W", t)] or []   # skip working names
         for t in titles:
             try:
                 p = json.loads(self.open(WIKI.format(title=urllib.parse.quote(t.replace(" ", "_"), safe=""))))
@@ -223,35 +242,104 @@ class SpaceInfo:
         pi = _tidy(rows[0].get("proposal_pi")) if rows else None
         return {"id": str(prog), "title": title, "pi": pi, "url": PROGRAM_URL[tel].format(id=prog)}
 
-    def _image(self, ra, dec, key):
-        if not self.img_dir:
-            return None
-        dest = self.img_dir / f"{key}.jpg"
-        if dest.exists():
-            return dest.name
-        q = {"hips": "CDS/P/DSS2/color", "width": 256, "height": 256, "fov": FOV_DEG, "projection": "TAN",
-             "coordsys": "icrs", "ra": f"{ra:.6f}", "dec": f"{dec:.6f}", "format": "jpg"}
-        body = self.fetch_bytes(HIPS2FITS + "?" + urllib.parse.urlencode(q))
-        if not body.startswith(b"\xff\xd8"):
-            raise ValueError("hips2fits did not return a JPEG")
+    @staticmethod
+    def _kind(body):
+        if body.startswith(b"\xff\xd8"):
+            return "jpg"
+        if body.startswith((b"GIF87a", b"GIF89a")):
+            return "gif"
+        if body.startswith(b"\x89PNG"):
+            return "png"
+        return None
+
+    def _save(self, key, body):
+        ext = self._kind(body)
+        if not ext or len(body) > MAX_IMAGE_BYTES:
+            raise ValueError(f"not a usable image ({len(body)} bytes, starts {body[:12]!r})")
         self.img_dir.mkdir(parents=True, exist_ok=True)
+        dest = self.img_dir / f"{key}.{ext}"
         tmp = dest.with_suffix(".tmp")
         tmp.write_bytes(body)
         os.replace(tmp, dest)
         self._trim_images()
         return dest.name
 
+    def _preview(self, ra, dec):
+        """The newest public Hubble or Webb preview within PREVIEW_RADIUS of the pointing (MAST), mosaics first."""
+        req = {"service": "Mast.Caom.Filtered.Position", "format": "json", "pagesize": 300, "page": 1,
+               "params": {"columns": "obs_collection,instrument_name,filters,t_min,proposal_id,jpegURL,dataRights,calib_level,target_name",
+                          "filters": [{"paramName": "obs_collection", "values": ["HST", "JWST"]},
+                                      {"paramName": "dataRights", "values": ["PUBLIC"]},
+                                      {"paramName": "dataproduct_type", "values": ["image"]},
+                                      {"paramName": "intentType", "values": ["science"]}],
+                          "position": f"{ra:.6f}, {dec:.6f}, {PREVIEW_RADIUS}"}}
+        rows = [r for r in json.loads(self.post(MAST, {"request": json.dumps(req)})).get("data") or []
+                if r.get("jpegURL") and str(r.get("dataRights", "")).upper() == "PUBLIC"]
+        rows.sort(key=lambda r: (int(r.get("calib_level") or 0), float(r.get("t_min") or 0)), reverse=True)
+        return rows[:3]
+
+    def _image(self, ra, dec, key):
+        """-> (file name, caption) for the best picture of this spot, or (None, None).
+        1. the newest public Hubble/Webb preview of it (MAST), 2. a DSS2 survey cutout."""
+        if not self.img_dir:
+            return None, None
+        for f in self.img_dir.glob(f"{key}.*"):
+            if f.suffix in (".jpg", ".gif", ".png"):
+                return f.name, self.captions.get(key)
+        errors = []
+        try:
+            for r in self._preview(ra, dec):
+                try:
+                    name = self._save(key, self.fetch_bytes(MAST_DOWNLOAD.format(uri=urllib.parse.quote(r["jpegURL"], safe=":/"))))
+                except Exception as e:   # noqa: BLE001 - try the next preview
+                    errors.append(f"MAST preview: {e}")
+                    continue
+                year = ""
+                if r.get("t_min"):                                     # MJD (days since 1858-11-17) -> year
+                    year = str((datetime(1858, 11, 17) + timedelta(days=float(r["t_min"]))).year)
+                tel = "Webb" if r.get("obs_collection") == "JWST" else "Hubble"
+                cap = " · ".join(x for x in (f"{tel}'s own earlier image", _tidy(r.get("instrument_name")), year,
+                                             f"program {r['proposal_id']}" if r.get("proposal_id") else None) if x)
+                self.captions[key] = {"kind": "telescope", "text": cap, "source": "MAST"}
+                return name, self.captions[key]
+        except Exception as e:           # noqa: BLE001 - MAST down or changed: fall back to the survey
+            errors.append(f"MAST search: {e}")
+        for label, url in SURVEY_URLS:
+            try:
+                name = self._save(key, self.fetch_bytes(url.format(ra=ra, dec=dec, fov=FOV_DEG, arcmin=FOV_DEG * 60)))
+            except Exception as e:       # noqa: BLE001 - try the next survey server
+                errors.append(f"{label}: {e}")
+                continue
+            self.captions[key] = {"kind": "survey", "text": f"Sky survey (DSS2) via {label} · 10′ across", "source": label}
+            return name, self.captions[key]
+        raise ValueError("no image: " + " | ".join(e[:120] for e in errors))
+
     def _trim_images(self):
-        files = sorted(self.img_dir.glob("*.jpg"), key=lambda f: f.stat().st_mtime)
+        files = sorted((f for f in self.img_dir.iterdir() if f.suffix in (".jpg", ".gif", ".png")),
+                       key=lambda f: f.stat().st_mtime)
         for f in files[:-MAX_IMAGES]:
             f.unlink(missing_ok=True)
 
     def lookup(self, tel, visit, now=None):
-        """Look one visit up and cache it. Raises on network trouble (the caller backs off)."""
+        """Look one visit up and cache what worked. Each part (what it is, summary, image, program) is
+        independent: one unreachable service only loses its own part. Raises only if every part failed."""
         now = now or time.time()
         name, ra, dec, prog = visit["target"], visit.get("ra"), visit.get("dec"), visit.get("proposal")
         info = {"name": name, "fetched_at": now, "sources": []}
-        obj = self._object(name, ra, dec)
+        errors = []
+
+        def part(label, fn, *a):
+            try:
+                return fn(*a)
+            except Exception as e:       # noqa: BLE001 - recorded; the other parts still run
+                errors.append(f"{label}: {str(e)[:160]}")
+                return None
+        obj = part("SIMBAD", self._object, name, ra, dec)
+        if obj is None and not any(e.startswith("SIMBAD") for e in errors) and ra is not None:
+            info["resolved"] = False
+            info["nearest"] = part("SIMBAD nearby", self._nearest, ra, dec)
+            if info["nearest"]:
+                info["sources"].append("SIMBAD (nearby search)")
         if obj:
             info.update(resolved=True, main_id=_tidy(obj["main_id"]), type=obj.get("type"), morph=obj.get("morph"),
                         distance=ly_text(obj.get("distance_ly")), papers=obj.get("papers"),
@@ -259,24 +347,30 @@ class SpaceInfo:
                                                           if a.startswith(("NAME ", "M ", "NGC ", "IC ")))
                                  if x != _tidy(obj["main_id"])][:3])
             info["sources"].append("SIMBAD")
-            wiki = self._wiki(wiki_titles(name, obj))
-            if wiki:
-                info["wiki"] = wiki
-                info["sources"].append("Wikipedia")
-        elif ra is not None:
-            info["resolved"] = False
-            info["nearest"] = self._nearest(ra, dec)
-            info["sources"].append("SIMBAD (nearby search)")
+        # Wikipedia works without SIMBAD too: the scheduled name is tried directly (NGC 1365, Messier 51...).
+        wiki = part("Wikipedia", self._wiki, wiki_titles(name, obj))
+        if wiki:
+            info["wiki"] = wiki
+            info["sources"].append("Wikipedia")
         if ra is not None:
-            info["image"] = self._image(ra, dec, _key(round(ra, 3), round(dec, 3)))
-            if info["image"]:
-                info["sources"].append("DSS2 via CDS")
+            img, cap = part("image", self._image, ra, dec, _key(round(ra, 3), round(dec, 3))) or (None, None)
+            if img:
+                info["image"], info["image_caption"] = img, cap
+                info["sources"].append(cap["source"] if cap else "image")
+        if prog and self.program(tel, prog) is None and not (visit.get("program") or {}).get("title"):
+            p = part("MAST program", self._program, tel, prog)
+            if p:
+                with self.lock:
+                    self.data["programs"][f"{tel}:{prog}"] = p
+        useful = obj or info.get("nearest") or info.get("wiki") or info.get("image") or \
+            (prog and self.program(tel, prog)) or (visit.get("program") or {}).get("title")
+        if errors and not useful:                          # nothing at all: back off as a failure
+            raise RuntimeError("; ".join(errors))
+        if errors:
+            info["errors"] = errors                       # partial: retried after FAIL_RETRY, and on restart
+            log.info("space: info for %s partly unavailable: %s", name, "; ".join(errors))
         with self.lock:
             self.data["targets"][self.target_key(tel, visit)] = info
-        if prog and self.program(tel, prog) is None and not (visit.get("program") or {}).get("title"):
-            p = self._program(tel, prog)
-            with self.lock:
-                self.data["programs"][f"{tel}:{prog}"] = p
         return info
 
     # ------------------------------------------------------------ cache
@@ -295,7 +389,8 @@ class SpaceInfo:
         if not info or info.get("failed"):
             return None
         out = {k: info.get(k) for k in ("resolved", "main_id", "type", "morph", "distance", "aliases", "nearest", "wiki")}
-        out["image"] = f"api/space/image?k={info['image'][:-4]}" if info.get("image") else None
+        out["image"] = f"api/space/image?k={info['image'].rsplit('.', 1)[0]}" if info.get("image") else None
+        out["image_caption"] = info.get("image_caption")
         out["sources"] = list(info.get("sources") or [])
         prog = visit.get("proposal")
         sched = visit.get("program") or {}
@@ -319,7 +414,7 @@ class SpaceInfo:
                 break
             k = self.target_key(tel, v)
             cur = self.data["targets"].get(k)
-            if cur and not (cur.get("failed") and now - cur["fetched_at"] > FAIL_RETRY):
+            if cur and not ((cur.get("failed") or cur.get("errors")) and now - cur["fetched_at"] > FAIL_RETRY):
                 continue
             done += 1
             try:
@@ -354,8 +449,11 @@ class SpaceInfo:
         """Path of a cached cutout for GET /api/space/image?k=..., or None (never fetches)."""
         if not self.img_dir or not re.fullmatch(r"[0-9a-f]{16}", k or ""):
             return None
-        p = self.img_dir / f"{k}.jpg"
-        return p if p.is_file() else None
+        for ext in ("jpg", "gif", "png"):
+            p = self.img_dir / f"{k}.{ext}"
+            if p.is_file():
+                return p
+        return None
 
 
 def _sep(ra1, dec1, ra2, dec2):

@@ -254,7 +254,10 @@
         `${p.title ? ` · “${esc(p.title)}”` : ''}${p.pi ? ` · PI ${esc(p.pi)}` : ''}${p.category ? ` · ${esc(p.category)}` : ''}</p>`);
       if (f.sources?.length) lines.push(`<p class="src">${esc(f.sources.join(' · '))}</p>`);
     }
-    return `<div class="info"><figure>${img}<figcaption>Sky survey image (DSS2) · 10′ across · not ${NAME[t.id] || t.name}'s own</figcaption></figure>` +
+    const cap = f?.image_caption;
+    const capText = cap ? (cap.kind === 'telescope' ? cap.text : `${cap.text} · not ${NAME[t.id] || t.name}'s own`)
+      : (f?.image ? 'Sky survey image' : 'No image of this spot yet');
+    return `<div class="info"><figure>${img}<figcaption>${esc(capText)}</figcaption></figure>` +
       `<div>${lines.join('')}</div></div>`;
   }
 

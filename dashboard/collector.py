@@ -261,7 +261,7 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(404, {"error": "no such image"})
             body = f.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Type", {".gif": "image/gif", ".png": "image/png"}.get(f.suffix, "image/jpeg"))
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "max-age=86400")
             self.send_header("X-Content-Type-Options", "nosniff")
