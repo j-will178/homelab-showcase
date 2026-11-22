@@ -217,6 +217,47 @@
     });
   }
 
+  // ------------------------------------------------------------------ info panel
+  // Which visit each card's panel shows: the current one, unless a row was clicked (kept until
+  // 2 minutes without a click, then back to current so the kiosk never sticks on an old target).
+  const sel = {};
+  let lastClick = 0;
+  const vkey = v => `${v.target}|${v.begin}`;
+  const NAME = { hst: 'Hubble', jwst: 'Webb' };
+
+  function placeholder(c) {
+    return `<svg viewBox="0 0 132 132" aria-hidden="true"><rect width="132" height="132" fill="none"/>` +
+      ['M66 10V26', 'M66 106V122', 'M10 66H26', 'M106 66H122'].map(d => `<path d="${d}" stroke="${c}" stroke-width="1.2"/>`).join('') +
+      `<text x="66" y="70" text-anchor="middle" class="ph">no image yet</text></svg>`;
+  }
+
+  function infoPanel(t, v, isCurrent) {
+    const c = COLOR[t.id];
+    const f = v.info;
+    const img = f?.image
+      ? `<img src="${esc(f.image)}" alt="Sky survey image around ${esc(v.target)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{innerHTML:${esc(JSON.stringify(placeholder(c)))}}))">`
+      : placeholder(c);
+    const lines = [];
+    if (!isCurrent) lines.push(`<p class="sel-note">Showing <b>${esc(v.target)}</b> · ${v.ago_s != null ? `${dur(v.ago_s)} ago` : `in ${dur(until(v.begin))}`}</p>`);
+    if (!f) {
+      lines.push('<p class="fact muted">Looking this target up…</p>');
+    } else {
+      const badges = [f.type, f.morph].filter(Boolean).map((b, i) => `<span class="badge${i ? ' dim' : ''}" style="--tc:${c}">${esc(b)}</span>`);
+      if (!f.resolved) badges.push('<span class="badge dim">Survey field · no catalog match</span>');
+      if (badges.length) lines.push(`<p>${badges.join('')}</p>`);
+      const facts = [f.distance && `<b>${esc(f.distance)}</b>`, f.aliases?.length && `also called ${esc(f.aliases.join(', '))}`].filter(Boolean);
+      if (facts.length) lines.push(`<p class="fact">${facts.join(' · ')}</p>`);
+      if (f.wiki?.summary) lines.push(`<p class="sum">${esc(f.wiki.summary)}${f.wiki.url ? ` <a href="${esc(f.wiki.url)}" target="_blank" rel="noopener">Wikipedia</a>` : ''}</p>`);
+      if (f.nearest) lines.push(`<p class="fact"><b>Nearest known object:</b> ${esc(f.nearest.name)}${f.nearest.type ? ` (${esc(f.nearest.type.toLowerCase())})` : ''}, ${f.nearest.sep_arcmin}′ away${f.nearest.distance ? ` · ${esc(f.nearest.distance)}` : ''}</p>`);
+      const p = f.program;
+      if (p) lines.push(`<p class="fact"><b>Why:</b> <a href="${esc(p.url)}" target="_blank" rel="noopener">program ${esc(p.id)}</a>` +
+        `${p.title ? ` · “${esc(p.title)}”` : ''}${p.pi ? ` · PI ${esc(p.pi)}` : ''}</p>`);
+      if (f.sources?.length) lines.push(`<p class="src">${esc(f.sources.join(' · '))}</p>`);
+    }
+    return `<div class="info"><figure>${img}<figcaption>Sky survey image (DSS2) · 10′ across · not ${NAME[t.id] || t.name}'s own</figcaption></figure>` +
+      `<div>${lines.join('')}</div></div>`;
+  }
+
   // ------------------------------------------------------------------ cards + chips
   function card(t) {
     const p = t.position;
@@ -228,9 +269,16 @@
       ? `<div class="now">${esc(c.target)}</div><div class="meta">${esc(c.instrument || 'instrument not listed')} · until ${hm(c.end)} (${dur(until(c.end))})` +
         `${c.sun_angle != null ? ` · ${Math.round(c.sun_angle)}° from the Sun` : ' · no coordinates published'}${c.proposal ? ` · program ${esc(c.proposal)}` : ''}</div>`
       : `<div class="now">Between targets</div><div class="meta">${t.schedule_covers_now ? 'slewing or calibrating' : 'no published schedule covers right now'}</div>`;
-    const rows = t.next.map(v => `<li class="next"><span class="t">next: ${esc(v.target)}</span><span class="w">in ${dur(until(v.begin))}</span></li>`)
-      .concat(t.recent.map(v => `<li><span class="t">${esc(v.target)}${v.instrument ? ` <span class="w">· ${esc(v.instrument)}</span>` : ''}</span><span class="w">${dur(v.ago_s)} ago</span></li>`));
+    if (Date.now() - lastClick > 120000) delete sel[t.id];
+    const all = [...(c ? [c] : []), ...t.next, ...t.recent];
+    const shown = all.find(v => vkey(v) === sel[t.id]) || c || t.next[0] || null;
+    const row = (v, cls, label, when) => `<li class="${cls}${shown && vkey(v) === vkey(shown) ? ' on' : ''}" data-tel="${t.id}" data-key="${esc(vkey(v))}" tabindex="0">` +
+      `<span class="t">${label}</span><span class="w">${when}</span></li>`;
+    const rows = (c ? [row(c, 'now-row', `now: ${esc(c.target)}`, `until ${hm(c.end)}`)] : [])
+      .concat(t.next.map(v => row(v, 'next', `next: ${esc(v.target)}`, `in ${dur(until(v.begin))}`)))
+      .concat(t.recent.map(v => row(v, '', `${esc(v.target)}${v.instrument ? ` <span class="w">· ${esc(v.instrument)}</span>` : ''}`, `${dur(v.ago_s)} ago`)));
     return `<article class="sp-card" style="--tc:${COLOR[t.id] || 'var(--accent)'}"><h2>${esc(t.name)}<span class="pos">${esc(pos)}</span></h2>${head}` +
+      (shown ? infoPanel(t, shown, shown === c) : '') +
       (rows.length ? `<ol>${rows.join('')}</ol>` : '<p class="none">no schedule data yet</p>') + '</article>';
   }
 
@@ -243,6 +291,8 @@
     $('spChips').innerHTML = out.join('');
   }
 
+  const cardsHtml = data => ['jwst', 'hst'].map(id => data.telescopes.find(t => t.id === id)).filter(Boolean).map(card).join('');
+
   async function refresh() {
     try {
       const r = await fetch('api/space', { cache: 'no-store' });
@@ -251,12 +301,23 @@
       chips(data);
       drawTop(data);
       drawSky(data);
-      $('spCards').innerHTML = ['jwst', 'hst'].map(id => data.telescopes.find(t => t.id === id)).filter(Boolean).map(card).join('');
+      lastData = data;
+      $('spCards').innerHTML = cardsHtml(data);
     } catch (e) {
       console.warn('space: fetch failed', e);
       $('spChips').innerHTML = '<span class="chip warn">space data unavailable</span>';
     }
   }
+
+  let lastData = null;
+  function pick(li) {
+    if (!li || !lastData) return;
+    sel[li.dataset.tel] = li.dataset.key;
+    lastClick = Date.now();
+    $('spCards').innerHTML = cardsHtml(lastData);
+  }
+  $('spCards').addEventListener('click', e => pick(e.target.closest('li[data-key]')));
+  $('spCards').addEventListener('keydown', e => { if (e.key === 'Enter') pick(e.target.closest('li[data-key]')); });
 
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;

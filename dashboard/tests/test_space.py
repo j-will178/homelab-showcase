@@ -107,6 +107,10 @@ class ScheduleTest(unittest.TestCase):
         self.assertNotIn("ecl_lon", d)
 
 
+def offline(*_):
+    raise OSError("offline in tests")
+
+
 class FakeNet:
     """Canned replies by URL; records what was asked."""
 
@@ -135,6 +139,8 @@ class FakeNet:
             page = int(q["page"][0])
             items = [obs("Messier 51", T - 600, T + 600)] if page == 1 else []
             return json.dumps({"total_number": 1, "page": page, "page_limit": 500, "items": items})
+        if "cds.unistra.fr" in u.netloc or "wikipedia" in u.netloc:
+            raise OSError("not faked here: see test_space_info.py")
         raise AssertionError("unexpected URL " + url)
 
 
@@ -142,7 +148,7 @@ class FeedTest(unittest.TestCase):
     def test_live_refresh_view_and_cache(self):
         with tempfile.TemporaryDirectory() as d:
             net = FakeNet()
-            f = space.SpaceFeed(d, opener=net)
+            f = space.SpaceFeed(d, opener=net, poster=offline, fetch_bytes=offline)
             f.refresh(now=T)
             q = net.observation_query
             self.assertEqual(q["observatory_ids"], ["obs-JWST"])       # last telescope asked
@@ -154,18 +160,19 @@ class FeedTest(unittest.TestCase):
             self.assertEqual(hst["position"]["kind"], "earth-orbit")
             self.assertEqual(jwst["position"]["kind"], "l2")
             self.assertTrue(all(s["error"] is None for s in v["sources"].values()))
+            self.assertIsNone(hst["current"]["info"])                   # lookups failed softly (not faked here)
             json.dumps(v)                                               # serializable as served
             # nothing is due again an hour later except... nothing: schedules are hourly, so +30 min asks nothing
             n = len(net.calls)
             f.refresh(now=T + 1800)
             self.assertEqual(len(net.calls), n)
             # a restart reads the cache instead of refetching
-            g = space.SpaceFeed(d, opener=FakeNet(fail=["http"]))
+            g = space.SpaceFeed(d, opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline)
             self.assertEqual(g.view(now=T)["telescopes"][0]["current"]["target"], "Messier 51")
 
     def test_one_source_down_keeps_the_others_and_retries_later(self):
         net = FakeNet(fail=["celestrak"])
-        f = space.SpaceFeed(None, opener=net)
+        f = space.SpaceFeed(None, opener=net, poster=offline, fetch_bytes=offline)
         f.refresh(now=T)
         v = f.view(now=T)
         self.assertIsNone(v["telescopes"][0]["position"])
@@ -178,7 +185,7 @@ class FeedTest(unittest.TestCase):
         self.assertIsNotNone(f.view(now=T)["telescopes"][0]["position"])
 
     def test_demo_respects_pointing_limits(self):
-        f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]))
+        f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline)
         for k in range(0, 400, 37):                                     # different days through the year
             v = f.view(now=T + k * 86400)
             for t in v["telescopes"]:
@@ -187,6 +194,7 @@ class FeedTest(unittest.TestCase):
                     if vis and vis.get("sun_angle") is not None:
                         self.assertTrue(lo - 4 <= vis["sun_angle"] <= hi + 4, (t["id"], vis))   # the Sun moves ~1 deg/day
             self.assertEqual(v["telescopes"][1]["position"]["kind"], "l2")
+            self.assertIn("sources", v["telescopes"][0]["current"]["info"])
 
 
 if __name__ == "__main__":

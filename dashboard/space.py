@@ -31,6 +31,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import space_info
+
 log = logging.getLogger("space")
 
 ACROSS = "https://api.across.sciencecloud.nasa.gov/v1"
@@ -310,10 +312,13 @@ def demo_webb_rows(t):
 class SpaceFeed:
     """Background fetcher + cache. mode: 'live' (fetch, cache in state_dir), 'demo' (generated)."""
 
-    def __init__(self, state_dir=None, mode="live", opener=None):
+    def __init__(self, state_dir=None, mode="live", opener=None, poster=None, fetch_bytes=None):
         self.mode = mode
         self.path = Path(state_dir) / "space.json" if state_dir else None
         self.open = opener or self._http
+        # Facts about each target for the info panel (SIMBAD, Wikipedia, MAST, sky cutouts).
+        self.info = space_info.SpaceInfo(state_dir, opener=self.open, poster=poster or self._http_post,
+                                         fetch_bytes=fetch_bytes or self._http_bytes)
         self.lock = threading.Lock()
         self.cache = {"sources": {}, "schedules": {}, "tle": None, "horizons": None, "across_ids": {}}
         if self.path and self.path.exists():
@@ -326,6 +331,26 @@ class SpaceFeed:
     @staticmethod
     def _http(url):
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/plain"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read(MAX_BYTES + 1)
+        if len(body) > MAX_BYTES:
+            raise ValueError("reply too large")
+        return body.decode("utf-8", "replace")
+
+    @staticmethod
+    def _http_bytes(url):
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read(MAX_BYTES + 1)
+        if len(body) > MAX_BYTES:
+            raise ValueError("reply too large")
+        return body
+
+    @staticmethod
+    def _http_post(url, form):
+        data = urllib.parse.urlencode(form).encode()
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, "Accept": "application/json",
+                                                              "Content-Type": "application/x-www-form-urlencoded"})
         with urllib.request.urlopen(req, timeout=30) as r:
             body = r.read(MAX_BYTES + 1)
         if len(body) > MAX_BYTES:
@@ -415,6 +440,23 @@ class SpaceFeed:
             except Exception as e:       # noqa: BLE001
                 self._record("horizons", now, e)
         self._save()
+        self.prefetch_info(now)
+
+    def prefetch_info(self, now):
+        """Look up facts for what's on screen: every current target, then next, then recent."""
+        with self.lock:
+            per_tel = {t["id"]: visits(self.cache["schedules"].get(t["id"]) or []) for t in TELESCOPES}
+        cur, nxt, rec = [], [], []
+        for tel, vs in per_tel.items():
+            c, r, n = pointing(vs, now)
+            if c:
+                cur.append((tel, c))
+            nxt += [(tel, v) for v in n[:1]]
+            rec += [(tel, v) for v in r]
+        try:
+            self.info.prefetch(cur + nxt + rec, now)
+        except Exception:                # noqa: BLE001 - info is a nice-to-have
+            log.exception("space: info prefetch failed")
 
     def _save(self):
         if not self.path:
@@ -463,9 +505,10 @@ class SpaceFeed:
                 log.warning("space: %s position: %s", tel["id"], e)
             exp = demo_schedule(tel, now) if demo else cache["schedules"].get(tel["id"]) or []
             cur, recent, upcoming = pointing(visits(exp), now)
-            d["current"] = describe(cur, now) if cur else None
-            d["recent"] = [dict(describe(v, now), ago_s=round(now - v["end"])) for v in recent]
-            d["next"] = [describe(v, now) for v in upcoming]
+            facts = (lambda v: space_info.demo_info(tel["id"], v)) if demo else (lambda v: self.info.get(tel["id"], v))
+            d["current"] = dict(describe(cur, now), info=facts(cur)) if cur else None
+            d["recent"] = [dict(describe(v, now), ago_s=round(now - v["end"]), info=facts(v)) for v in recent]
+            d["next"] = [dict(describe(v, now), info=facts(v)) for v in upcoming]
             d["schedule_covers_now"] = bool(exp) and exp[0]["begin"] <= now <= max(e["end"] for e in exp)
             out["telescopes"].append(d)
         return out

@@ -243,11 +243,30 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._json(200, honeypot_store.patterns_view() if honeypot_store else {"source": None})
             if path == "/api/honeypot/export.csv":
                 return self._honeypot_csv()
+            if path == "/api/space/image":
+                return self._space_image()
             if path == "/api/space":
                 if not space_feed:
                     return self._json(404, {"error": "space section off"})
                 return self._json(200, space_feed.view())
             return super().do_GET()
+
+        def _space_image(self):
+            # A cached sky-survey cutout for the Space info panel. Only serves what the
+            # background lookups already saved; never fetches on a viewer's request.
+            from urllib.parse import parse_qs, urlsplit
+            k = (parse_qs(urlsplit(self.path).query).get("k") or [""])[0]
+            f = space_feed.info.image_path(k) if space_feed else None
+            if not f:
+                return self._json(404, {"error": "no such image"})
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _honeypot_csv(self):
             # Every stored honeypot event (30 days at most) as CSV, for analysis outside the dashboard.
