@@ -508,5 +508,532 @@
    "status": "Forbidden",
    "message": "forbidden: timestamp outside allowed time range"
   }
+ },
+ "hubble_schedule_2026-11-22T0": {
+  "data": [
+   {
+    "id": "01M7STT8KDZCR5R2XG3FEQ351R",
+    "targetName": "SDSS-J095418.15+471725.1",
+    "startTime": "2026-11-22T00:21:00-05:00",
+    "endTime": "2026-11-22T04:14:28-05:00",
+    "targetRightAscensionInDegrees": "148.57563281213626",
+    "targetDeclinationInDegrees": "47.29029596621149",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMW86AWN22CHCPCAGRV1W",
+    "targetName": "SDSS-J095418.15+471725.1",
+    "startTime": "2026-11-22T00:21:00-05:00",
+    "endTime": "2026-11-22T04:14:28-05:00",
+    "targetRightAscensionInDegrees": "148.57563281213626",
+    "targetDeclinationInDegrees": "47.29029596621149",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7STT8DR1X0Y1FSMTY18A6FV",
+    "targetName": "J0833+4926",
+    "startTime": "2026-11-22T05:01:36-05:00",
+    "endTime": "2026-11-22T06:56:18-05:00",
+    "targetRightAscensionInDegrees": "128.258416666667",
+    "targetDeclinationInDegrees": "49.438377777777795",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMW1MCDSM7W7QS2906X30",
+    "targetName": "J0833+4926",
+    "startTime": "2026-11-22T05:01:36-05:00",
+    "endTime": "2026-11-22T06:56:18-05:00",
+    "targetRightAscensionInDegrees": "128.258416666667",
+    "targetDeclinationInDegrees": "49.438377777777795",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMVVCR81P9VVHAMZ417ZJ",
+    "targetName": "CLUTCH-TARGET-KE,CLUTCH-TARGET-KI,CLUTCH-TARGET-KJ,CLUTCH-TARGET-KL,CLUTCH-TARGET-KM,CLUTCH-TARGET-KN,CLUTCH-TARGET-KO",
+    "startTime": "2026-11-22T08:10:18-05:00",
+    "endTime": "2026-11-22T18:17:29-05:00",
+    "targetRightAscensionInDegrees": "149.90675511904755",
+    "targetDeclinationInDegrees": "2.5081539682539673",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7VZJV1Z5DR853QS4M5G0DRX",
+    "targetName": "CLUTCH-TARGET-KE,CLUTCH-TARGET-KI,CLUTCH-TARGET-KJ,CLUTCH-TARGET-KL,CLUTCH-TARGET-KM,CLUTCH-TARGET-KN,CLUTCH-TARGET-KO,CLUTCH-TARGET-LC",
+    "startTime": "2026-11-22T08:10:18-05:00",
+    "endTime": "2026-11-22T21:27:45-05:00",
+    "targetRightAscensionInDegrees": "149.9177193229165",
+    "targetDeclinationInDegrees": "2.520378472222222",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   }
+  ],
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "hubble_schedule_2026-11-21T0": {
+  "data": [
+   {
+    "id": "01M7CWN51MBB0BR9Q1RDY9XV2V",
+    "targetName": "CLUTCH-TARGET-JX",
+    "startTime": "2026-11-20T18:37:06-05:00",
+    "endTime": "2026-11-20T19:20:32-05:00",
+    "targetRightAscensionInDegrees": "149.841280416667",
+    "targetDeclinationInDegrees": "2.2783277777777795",
+    "isMovingTarget": false,
+    "scienceInstrument": "ACS",
+    "executed": false
+   },
+   {
+    "id": "01M7STTFHC5X85V0YKSJP75G5J",
+    "targetName": "CLUTCH-TARGET-JX",
+    "startTime": "2026-11-20T18:37:06-05:00",
+    "endTime": "2026-11-20T19:20:32-05:00",
+    "targetRightAscensionInDegrees": "149.841280416667",
+    "targetDeclinationInDegrees": "2.2783277777777795",
+    "isMovingTarget": false,
+    "scienceInstrument": "ACS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWN4MDKHAFDW596YZTYAHZ",
+    "targetName": "ANY,NGC4302-N",
+    "startTime": "2026-11-20T20:24:22-05:00",
+    "endTime": "2026-11-21T00:22:02-05:00",
+    "targetRightAscensionInDegrees": "185.43223235435192",
+    "targetDeclinationInDegrees": "14.588758983722347",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7STTF609TCBVVD54X1D9E1Y",
+    "targetName": "ANY,NGC4302-N",
+    "startTime": "2026-11-20T20:24:22-05:00",
+    "endTime": "2026-11-21T00:22:02-05:00",
+    "targetRightAscensionInDegrees": "185.43223235435192",
+    "targetDeclinationInDegrees": "14.588758983722347",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7CWN3H6SE2NRDWYZATBMD5E",
+    "targetName": "KELT-17,WAVELINE",
+    "startTime": "2026-11-21T00:49:24-05:00",
+    "endTime": "2026-11-21T07:45:39-05:00",
+    "targetRightAscensionInDegrees": "125.61732550969064",
+    "targetDeclinationInDegrees": "13.73530176344444",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7STTE55JEM6EFWG0TXKMWJ0",
+    "targetName": "KELT-17,WAVELINE",
+    "startTime": "2026-11-21T00:49:24-05:00",
+    "endTime": "2026-11-21T07:45:39-05:00",
+    "targetRightAscensionInDegrees": "125.61732550969064",
+    "targetDeclinationInDegrees": "13.73530176344444",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMYVJR9J203KS6VQ3QEV1",
+    "targetName": "AGK+81D266,WAVELINE",
+    "startTime": "2026-11-21T08:44:00-05:00",
+    "endTime": "2026-11-21T09:31:03-05:00",
+    "targetRightAscensionInDegrees": "140.32938926683178",
+    "targetDeclinationInDegrees": "81.72396477944821",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7STTAJ852KSHFPDNF6JRZQY",
+    "targetName": "AGK+81D266,WAVELINE",
+    "startTime": "2026-11-21T08:44:00-05:00",
+    "endTime": "2026-11-21T09:31:03-05:00",
+    "targetRightAscensionInDegrees": "140.32938926683178",
+    "targetDeclinationInDegrees": "81.72396477944821",
+    "isMovingTarget": false,
+    "scienceInstrument": "STIS",
+    "executed": false
+   },
+   {
+    "id": "01M7STTA0SV34VTVRKV4JAXAPK",
+    "targetName": "J0833+4926",
+    "startTime": "2026-11-21T10:12:36-05:00",
+    "endTime": "2026-11-21T12:32:05-05:00",
+    "targetRightAscensionInDegrees": "128.258416666667",
+    "targetDeclinationInDegrees": "49.4383777777778",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMXXRXZ8GK3DDFA6CRS4Y",
+    "targetName": "J0833+4926",
+    "startTime": "2026-11-21T10:12:36-05:00",
+    "endTime": "2026-11-21T12:32:05-05:00",
+    "targetRightAscensionInDegrees": "128.258416666667",
+    "targetDeclinationInDegrees": "49.4383777777778",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMXNB41D0WC2AZ3BWPDG5",
+    "targetName": "SDSSJ110411.40+223946.0",
+    "startTime": "2026-11-21T13:29:36-05:00",
+    "endTime": "2026-11-21T15:44:16-05:00",
+    "targetRightAscensionInDegrees": "166.0475",
+    "targetDeclinationInDegrees": "22.6629722222222",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7STT9SX88JW6NJTEM4GTDBB",
+    "targetName": "SDSSJ110411.40+223946.0",
+    "startTime": "2026-11-21T13:29:36-05:00",
+    "endTime": "2026-11-21T15:44:16-05:00",
+    "targetRightAscensionInDegrees": "166.0475",
+    "targetDeclinationInDegrees": "22.6629722222222",
+    "isMovingTarget": false,
+    "scienceInstrument": "COS",
+    "executed": false
+   },
+   {
+    "id": "01M7STT9JH1GHWSNHJCBVZ8VKE",
+    "targetName": "V-MN-CAM",
+    "startTime": "2026-11-21T16:25:16-05:00",
+    "endTime": "2026-11-21T16:59:39-05:00",
+    "targetRightAscensionInDegrees": "59.37392408674158",
+    "targetDeclinationInDegrees": "54.93807301260432",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMXCB749JQ45EEW8FTB2J",
+    "targetName": "V-MN-CAM",
+    "startTime": "2026-11-21T16:25:16-05:00",
+    "endTime": "2026-11-21T16:59:39-05:00",
+    "targetRightAscensionInDegrees": "59.37392408674158",
+    "targetDeclinationInDegrees": "54.93807301260432",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7STT8S7Q00VH61W6TMA885S",
+    "targetName": "PAL3",
+    "startTime": "2026-11-21T18:05:26-05:00",
+    "endTime": "2026-11-21T18:51:21-05:00",
+    "targetRightAscensionInDegrees": "151.38316730932166",
+    "targetDeclinationInDegrees": "0.07166556105115837",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   },
+   {
+    "id": "01M7CWMWEPBES6C9JFNS3MD22K",
+    "targetName": "PAL3",
+    "startTime": "2026-11-21T18:05:26-05:00",
+    "endTime": "2026-11-21T18:51:21-05:00",
+    "targetRightAscensionInDegrees": "151.38316730932166",
+    "targetDeclinationInDegrees": "0.07166556105115837",
+    "isMovingTarget": false,
+    "scienceInstrument": "WFC3",
+    "executed": false
+   }
+  ],
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "hubble_current": {
+  "data": {
+   "id": "01M7CWMW86AWN22CHCPCAGRV1W",
+   "observations": [
+    {
+     "id": "01M7CPZBHYFMFGYZAWJXWRZK9C",
+     "scienceInstrument": "COS",
+     "targetRightAscensionInDegrees": "148.5756328120843",
+     "targetDeclinationInDegrees": "47.29029596617853",
+     "predictedStartTime": "2026-11-22T03:30:29-05:00",
+     "predictedEndTime": "2026-11-22T04:14:28-05:00"
+    },
+    {
+     "id": "01M7CPZD74VA5XY10JABWZ39QH",
+     "scienceInstrument": "COS",
+     "targetRightAscensionInDegrees": "148.5756328121265",
+     "targetDeclinationInDegrees": "47.29029596620531",
+     "predictedStartTime": "2026-11-22T01:56:37-05:00",
+     "predictedEndTime": "2026-11-22T02:40:36-05:00"
+    },
+    {
+     "id": "01M7CPZEWWAD5D7VE2V9NRZ708",
+     "scienceInstrument": "COS",
+     "targetRightAscensionInDegrees": "148.5756328121647",
+     "targetDeclinationInDegrees": "47.29029596622953",
+     "predictedStartTime": "2026-11-22T00:31:40-05:00",
+     "predictedEndTime": "2026-11-22T01:07:29-05:00"
+    },
+    {
+     "id": "01M7CPZFTARQM90VP7Y5EHRD02",
+     "scienceInstrument": "COS",
+     "targetRightAscensionInDegrees": "148.5756328121695",
+     "targetDeclinationInDegrees": "47.29029596623258",
+     "predictedStartTime": "2026-11-22T00:21:00-05:00",
+     "predictedEndTime": "2026-11-22T00:26:50-05:00"
+    }
+   ],
+   "proposal": {
+    "id": "01KMS0NXYP4T4P6ZC97MHR9Y0P",
+    "proposalID": "18134",
+    "programID": "FM4",
+    "title": "A Far-Ultraviolet Spectroscopic Survey of AGN Dwarf Galaxies",
+    "proposalType": {
+     "id": "01HB7A6R7V916D5XCCPVWHHGVT",
+     "title": "Science Category",
+     "code": "SC"
+    },
+    "proposalTypeList": "GO",
+    "directSelection": false,
+    "directSelectionType": null,
+    "scientificCategory": {
+     "id": "01HMA4RVZY77N1S0JA23FTBT7B",
+     "title": "Galaxies"
+    },
+    "secondaryScientificCategory": {
+     "id": "01HMA4SP52N7JQ1GS24NZCA849",
+     "title": "Supermassive Black Holes And Active Galaxies"
+    },
+    "scientificKeywords": [
+     {
+      "id": "01HMA4RW0M961XAKH4VTSYRW6J",
+      "title": "Starburst Galaxies"
+     },
+     {
+      "id": "01HMA4S1GVDK6RR1QW7HKG9G26",
+      "title": "Emission Line Galaxies"
+     },
+     {
+      "id": "01HMA4SP5KSFNT4745XYHF6NP8",
+      "title": "Agn Host Galaxies"
+     },
+     {
+      "id": "01HMA4SY5AEX5CP2CDW1C6ZCKY",
+      "title": "Dwarf Galaxies"
+     },
+     {
+      "id": "01HMA4T7WHW8XJYKN264BPW7VE",
+      "title": "Galaxy Winds"
+     },
+     {
+      "id": "01HMA4T7WNWWBEY8XFRW41WHWP",
+      "title": "Supermassive Black Holes"
+     },
+     {
+      "id": "01HMNJ3NT3QV9W0C8JN8G9NZ3P",
+      "title": "Nearby Galaxies"
+     }
+    ],
+    "instruments": [
+     {
+      "id": "01HAAK8KHHZ93E8R3B2H23SQ29",
+      "title": "Cosmic Origins Spectrograph",
+      "code": "COS",
+      "status": "Active"
+     }
+    ],
+    "currentlyAllocatedExternalOrbitCount": 59,
+    "currentlyAllocatedInternalOrbitCount": 0,
+    "currentlyAllocatedParallelOrbitCount": 0,
+    "initiallyAllocatedExternalOrbitCount": 59,
+    "initiallyAllocatedInternalOrbitCount": 0,
+    "initiallyAllocatedParallelOrbitCount": 0,
+    "usedExternalOrbitCount": 59,
+    "usedInternalOrbitCount": 0,
+    "usedParallelOrbitCount": 0,
+    "primaryInvestigator": {
+     "id": "01HMA4T4P9971B4M6T238PV9NF",
+     "formalName": "Prof. Sylvain Veilleux",
+     "honorific": "Prof.",
+     "firstName": "Sylvain",
+     "middleName": "",
+     "lastName": "Veilleux",
+     "suffix": ""
+    }
+   },
+   "targetName": "SDSS-J095418.15+471725.1",
+   "isMovingTarget": false,
+   "targetRightAscensionInDegrees": "148.57563281213626",
+   "targetDeclinationInDegrees": "47.29029596621149",
+   "predictedStartTime": "2026-11-22T00:21:00-05:00",
+   "predictedEndTime": "2026-11-22T04:14:28-05:00",
+   "predictedStartTimeInFormatSGOS": "2026.326:00:21:00",
+   "predictedEndTimeInFormatSGOS": "2026.326:04:14:28",
+   "predictedDurationInSeconds": "14008",
+   "executed": false
+  },
+  "_pagination": {
+   "nextRecord": {
+    "id": "01M7STT8DR1X0Y1FSMTY18A6FV",
+    "startTime": "2026-11-22T05:01:36-05:00",
+    "endTime": "2026-11-22T06:56:18-05:00"
+   },
+   "previousRecord": {
+    "id": "01M7CWMWEPBES6C9JFNS3MD22K",
+    "startTime": "2026-11-21T18:05:26-05:00",
+    "endTime": "2026-11-21T18:51:21-05:00"
+   }
+  },
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
+ },
+ "hubble_detail_01M7STT8DR1X0Y1FSMTY18A6FV": {
+  "data": {
+   "id": "01M7STT8DR1X0Y1FSMTY18A6FV",
+   "observations": [
+    {
+     "id": "01M7S73NW9WPC39J05KBPW9BFT",
+     "scienceInstrument": "STIS",
+     "targetRightAscensionInDegrees": "128.258416666667",
+     "targetDeclinationInDegrees": "49.4383777777778",
+     "predictedStartTime": "2026-11-22T06:34:37-05:00",
+     "predictedEndTime": "2026-11-22T06:56:18-05:00"
+    },
+    {
+     "id": "01M7S73P61Y1SSYDG85YXRFVWV",
+     "scienceInstrument": "STIS",
+     "targetRightAscensionInDegrees": "128.258416666667",
+     "targetDeclinationInDegrees": "49.4383777777778",
+     "predictedStartTime": "2026-11-22T05:17:10-05:00",
+     "predictedEndTime": "2026-11-22T05:45:31-05:00"
+    },
+    {
+     "id": "01M7S73Q8F0RRGBSVNKCK29M34",
+     "scienceInstrument": "STIS",
+     "targetRightAscensionInDegrees": "128.258416666667",
+     "targetDeclinationInDegrees": "49.4383777777778",
+     "predictedStartTime": "2026-11-22T05:01:36-05:00",
+     "predictedEndTime": "2026-11-22T05:12:17-05:00"
+    }
+   ],
+   "proposal": {
+    "id": "01KMGNPHF5FQVCJ10SS3JEVA66",
+    "proposalID": "18044",
+    "programID": "FMN",
+    "title": "UV spectroscopy of extremely metal-poor dwarf compact star-forming galaxies with exceptionally strong HeII 4686 emission",
+    "proposalType": {
+     "id": "01HB7A6R7V916D5XCCPVWHHGVT",
+     "title": "Science Category",
+     "code": "SC"
+    },
+    "proposalTypeList": "GO",
+    "directSelection": false,
+    "directSelectionType": null,
+    "scientificCategory": {
+     "id": "01HMA4RVZY77N1S0JA23FTBT7B",
+     "title": "Galaxies"
+    },
+    "secondaryScientificCategory": null,
+    "scientificKeywords": [
+     {
+      "id": "01HMA4RW0M961XAKH4VTSYRW6J",
+      "title": "Starburst Galaxies"
+     },
+     {
+      "id": "01HMA4S1GVDK6RR1QW7HKG9G26",
+      "title": "Emission Line Galaxies"
+     },
+     {
+      "id": "01HMA4WE483GC0PQX1NVVJJHSK",
+      "title": "Irregular Galaxies"
+     }
+    ],
+    "instruments": [
+     {
+      "id": "01HAAK89PK0D16TFKTPZBJE960",
+      "title": "Space Telescope Imaging Spectrograph",
+      "code": "STIS",
+      "status": "Active"
+     },
+     {
+      "id": "01HAAK8KHHZ93E8R3B2H23SQ29",
+      "title": "Cosmic Origins Spectrograph",
+      "code": "COS",
+      "status": "Active"
+     }
+    ],
+    "currentlyAllocatedExternalOrbitCount": 34,
+    "currentlyAllocatedInternalOrbitCount": 0,
+    "currentlyAllocatedParallelOrbitCount": 0,
+    "initiallyAllocatedExternalOrbitCount": 34,
+    "initiallyAllocatedInternalOrbitCount": 0,
+    "initiallyAllocatedParallelOrbitCount": 0,
+    "usedExternalOrbitCount": 34,
+    "usedInternalOrbitCount": 0,
+    "usedParallelOrbitCount": 0,
+    "primaryInvestigator": {
+     "id": "01HMA4SHJ9VRHBXNY823P7X0AA",
+     "formalName": "Dr. Yuri I. Izotov",
+     "honorific": "Dr.",
+     "firstName": "Yuri",
+     "middleName": "I.",
+     "lastName": "Izotov",
+     "suffix": ""
+    }
+   },
+   "targetName": "J0833+4926",
+   "isMovingTarget": false,
+   "targetRightAscensionInDegrees": "128.258416666667",
+   "targetDeclinationInDegrees": "49.438377777777795",
+   "predictedStartTime": "2026-11-22T05:01:36-05:00",
+   "predictedEndTime": "2026-11-22T06:56:18-05:00",
+   "predictedStartTimeInFormatSGOS": "2026.326:05:01:36",
+   "predictedEndTimeInFormatSGOS": "2026.326:06:56:18",
+   "predictedDurationInSeconds": "6882",
+   "executed": false
+  },
+  "_pagination": {
+   "nextRecord": {
+    "id": "01M7CWMVVCR81P9VVHAMZ417ZJ",
+    "startTime": "2026-11-22T08:10:18-05:00",
+    "endTime": "2026-11-22T18:17:29-05:00"
+   },
+   "previousRecord": {
+    "id": "01M7CWMW86AWN22CHCPCAGRV1W",
+    "startTime": "2026-11-22T00:21:00-05:00",
+    "endTime": "2026-11-22T04:14:28-05:00"
+   }
+  },
+  "_meta": {
+   "code": 200,
+   "status": "",
+   "message": "OK"
+  }
  }
 }

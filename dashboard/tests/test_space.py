@@ -286,3 +286,44 @@ class StlTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as cm:
             f.fetch_stl(space.TELESCOPES[1], T_STL)
         self.assertIn("403", str(cm.exception))
+
+
+T_HST = datetime(2026, 11, 22, 8, 20, tzinfo=timezone.utc).timestamp()     # Hubble capture time (03:20 EST)
+
+
+class StlHubbleTest(unittest.TestCase):
+    """Hubble's flat schedule records and per-observation program lookups (captured 2026-11-22)."""
+
+    def test_flat_records(self):
+        exp = space.stl_observations(FIX["hubble_schedule_2026-11-22T0"]["data"])
+        first = exp[0]
+        self.assertEqual((first["target"], first["instrument"]), ("SDSS-J095418.15+471725.1", "COS"))
+        self.assertAlmostEqual(first["ra"], 148.5756, places=3)
+        self.assertIsNone(first["program"])
+        self.assertTrue(first["stl_id"])
+        self.assertTrue(any(e["target"] == "CLUTCH-TARGET-KE (+6)" for e in exp))
+        self.assertEqual(space.stl_target_name("A, B ,C"), "A (+2)")
+
+    def test_feed_fetches_programs_for_visits_on_screen(self):
+        asked = []
+
+        def opener(url, headers):
+            ep = headers["endpoint"]
+            asked.append((url.rsplit("/", 1)[1], ep))
+            if ep.startswith("schedule/"):
+                day = ep.split("/")[-1][:10]
+                key = ("hubble_" if url.endswith("/hubble") else "") + f"schedule_{day}T0"
+                return json.dumps(FIX.get(key) or {"data": [], "_meta": {"code": 200}})
+            detail = FIX.get(f"hubble_detail_{ep}") or FIX["hubble_current"]
+            return json.dumps(detail)
+        f = space.SpaceFeed(None, opener=FakeNet(), poster=offline, fetch_bytes=offline, stl_opener=opener)
+        f.refresh(now=T_HST)
+        details = [ep for slug, ep in asked if slug == "hubble" and not ep.startswith("schedule/")]
+        self.assertTrue(0 < len(details) <= 10)
+        self.assertFalse([ep for slug, ep in asked if slug == "webb" and not ep.startswith("schedule/")])   # Webb has them inline
+        hst = f.view(now=T_HST)["telescopes"][0]
+        progs = [v.get("proposal") for v in [hst["current"]] + hst["next"] + hst["recent"] if v]
+        self.assertIn("18134", progs)                                      # AGN dwarf galaxies (COS)
+        n = len(asked)
+        f.stl_programs(space.TELESCOPES[0], f.cache["schedules"]["hst"], T_HST)
+        self.assertEqual(len(asked), n)                                    # cached: no second lookup

@@ -235,12 +235,48 @@ def stl_time(t):
     return f"{d:%Y-%m-%d}T{d.hour}:{d:%M}:00Z"
 
 
+def stl_program(p):
+    """A Space Telescope Live `proposal` object -> {id, title, pi, category, type} (same for Webb and Hubble)."""
+    if not isinstance(p, dict) or not p:
+        return None
+    pi = (p.get("primaryInvestigator") or {}).get("formalName")
+    cat = (p.get("scientificCategory") or {}).get("title") or (p.get("proposalType") or {}).get("title")
+    typ = p.get("proposalTypeList") or (p.get("proposalType") or {}).get("code")
+    return {"id": _text(p.get("proposalID")), "title": _text(p.get("title"), 200), "pi": _text(pi),
+            "category": _text(cat), "type": _text(typ)}
+
+
+def stl_target_name(raw):
+    """Hubble lists several targets of one visit comma-separated: show the first and how many more."""
+    names = [n.strip() for n in str(raw or "").split(",") if n.strip()]
+    if not names:
+        return None
+    return _text(names[0]) + (f" (+{len(names) - 1})" if len(names) > 1 else "")
+
+
 def stl_observations(items):
-    """Space Telescope Live schedule records -> exposures like across_observations(), plus the program
-    (title, PI, category) and the visit type, which ACROSS doesn't have."""
+    """Space Telescope Live schedule records -> exposures like across_observations().
+
+    Two shapes: Webb's are full visit records (targets, boresight, proposal with title/PI/category, visit
+    type); Hubble's are flat (targetName, startTime/endTime, target RA/Dec, scienceInstrument, executed)
+    with no program, which SpaceFeed fetches per observation id (`stl_id`) for the visits on screen."""
     out = {}
     for o in items or []:
         if not isinstance(o, dict) or o.get("deleteTime"):
+            continue
+        if "targetName" in o:                                      # Hubble's flat record
+            try:
+                begin, end = _ts(o["startTime"]), _ts(o["endTime"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            inst = str(o.get("scienceInstrument") or "")
+            out[o.get("id") or (o["targetName"], begin)] = {
+                "target": stl_target_name(o.get("targetName")) or "unnamed", "begin": begin, "end": max(end, begin),
+                "ra": _num(o.get("targetRightAscensionInDegrees"), 0, 360),
+                "dec": _num(o.get("targetDeclinationInDegrees"), -90, 90),
+                "instrument": INSTRUMENT_NAMES.get(inst.upper()) or _text(inst) or "", "proposal": None, "program": None,
+                "status": "executed" if o.get("executed") else None, "visit_type": None, "category": None,
+                "stl_id": _text(o.get("id")), "created": 0}
             continue
         try:
             begin, end = _ts(o["scheduledStartTime"]), _ts(o["scheduledEndTime"])
@@ -254,16 +290,22 @@ def stl_observations(items):
             ra, dec = _num(tg.get("rightAscensionInDegrees"), 0, 360), _num(tg.get("declinationInDegrees"), -90, 90)
         p = o.get("proposal") or {}
         insts = [INSTRUMENT_NAMES.get(str(i.get("code", "")).upper()) or _text(i.get("title")) for i in p.get("instruments") or []]
-        pi = (p.get("primaryInvestigator") or {}).get("formalName")
-        cat = (p.get("scientificCategory") or {}).get("title") or (p.get("proposalType") or {}).get("title")
-        program = {"id": _text(p.get("proposalID")), "title": _text(p.get("title"), 200), "pi": _text(pi),
-                   "category": _text(cat), "type": _text((p.get("proposalType") or {}).get("code"))} if p else None
+        program = stl_program(p)
         out[o.get("id") or (name, begin)] = {
             "target": name, "begin": begin, "end": max(end, begin), "ra": ra, "dec": dec,
             "instrument": ", ".join(i for i in insts if i), "proposal": program and program["id"], "program": program,
             "status": _text(o.get("executionStatus")), "visit_type": _text((o.get("visitType") or {}).get("title")),
-            "category": _text(tg.get("category")), "created": 0}
+            "category": _text(tg.get("category")), "stl_id": _text(o.get("id")), "created": 0}
     return sorted(out.values(), key=lambda r: r["begin"])
+
+
+def with_programs(vs, programs):
+    """Fill in programs fetched per observation (Hubble) from {stl_id: program}."""
+    for v in vs:
+        if not v.get("program") and v.get("stl_id") in programs:
+            v["program"] = programs[v["stl_id"]]
+            v["proposal"] = v["program"] and v["program"]["id"]
+    return vs
 
 
 def visits(exposures):
@@ -280,7 +322,8 @@ def visits(exposures):
         else:
             out.append({"target": e["target"], "begin": e["begin"], "end": e["end"], "ra": e["ra"], "dec": e["dec"],
                         "instruments": [e["instrument"]] if e["instrument"] else [], "proposal": e["proposal"],
-                        "program": e.get("program"), "category": e.get("category"), "visit_type": e.get("visit_type")})
+                        "program": e.get("program"), "category": e.get("category"), "visit_type": e.get("visit_type"),
+                        "stl_id": e.get("stl_id")})
     return out
 
 
@@ -368,7 +411,7 @@ class SpaceFeed:
         self.info = space_info.SpaceInfo(state_dir, opener=self.open, poster=poster or self._http_post,
                                          fetch_bytes=fetch_bytes or self._http_bytes)
         self.lock = threading.Lock()
-        self.cache = {"sources": {}, "schedules": {}, "tle": None, "horizons": None, "across_ids": {}}
+        self.cache = {"sources": {}, "schedules": {}, "tle": None, "horizons": None, "across_ids": {}, "stl_programs": {}}
         if self.path and self.path.exists():
             try:
                 self.cache.update(json.loads(self.path.read_text()))
@@ -451,6 +494,25 @@ class SpaceFeed:
             ids[tel["id"]] = {"observatory": o["id"], "instruments": names}
         return ids[tel["id"]]
 
+    def stl_programs(self, tel, exposures, now, budget=10):
+        """Hubble's schedule has no program: fetch it per observation (`endpoint: <id>`) for the visits on
+        screen (current, next, recent), once each, at most `budget` per refresh. Failures only log."""
+        progs = self.cache.setdefault("stl_programs", {})
+        cur, recent, upcoming = pointing(visits(exposures), now)
+        want = [v["stl_id"] for v in ([cur] if cur else []) + upcoming + recent
+                if v.get("stl_id") and not v.get("program") and v["stl_id"] not in progs]
+        url = STL.format(slug=tel["stl"])
+        for oid in want[:budget]:
+            try:
+                res = json.loads(self.open_stl(url, {"endpoint": oid, "Referer": f"https://spacetelescopelive.org/{tel['stl']}"}))
+                progs[oid] = stl_program((res.get("data") or {}).get("proposal"))
+            except Exception as e:       # noqa: BLE001 - the panel just lacks the program for now
+                log.warning("space: %s program for %s: %s", tel["id"], oid, e)
+                break
+        if len(progs) > 2000:                                     # bounded: keep the newest ids (ULIDs sort by time)
+            for k in sorted(progs)[:len(progs) - 2000]:
+                del progs[k]
+
     def fetch_stl(self, tel, now):
         """Four 24-hour windows from Space Telescope Live: the past 3 days and the next day."""
         url = STL.format(slug=tel["stl"])
@@ -507,6 +569,8 @@ class SpaceFeed:
                         self.cache["schedules"][tel["id"]] = exp
                     self._record(name, now)
                     self.cache["sources"][name]["via"] = via
+                    if via == "spacetelescopelive":
+                        self.stl_programs(tel, exp, now)
                     if errors:
                         log.info("space: %s schedule from %s (%s)", tel["id"], via, errors[0])
                     break
@@ -534,7 +598,8 @@ class SpaceFeed:
     def prefetch_info(self, now):
         """Look up facts for what's on screen: every current target, then next, then recent."""
         with self.lock:
-            per_tel = {t["id"]: visits(self.cache["schedules"].get(t["id"]) or []) for t in TELESCOPES}
+            progs = self.cache.get("stl_programs") or {}
+            per_tel = {t["id"]: with_programs(visits(self.cache["schedules"].get(t["id"]) or []), progs) for t in TELESCOPES}
         cur, nxt, rec = [], [], []
         for tel, vs in per_tel.items():
             c, r, n = pointing(vs, now)
@@ -594,7 +659,7 @@ class SpaceFeed:
             except (KeyError, TypeError, ValueError, ZeroDivisionError) as e:
                 log.warning("space: %s position: %s", tel["id"], e)
             exp = demo_schedule(tel, now) if demo else cache["schedules"].get(tel["id"]) or []
-            cur, recent, upcoming = pointing(visits(exp), now)
+            cur, recent, upcoming = pointing(with_programs(visits(exp), cache.get("stl_programs") or {}), now)
             facts = (lambda v: space_info.demo_info(tel["id"], v)) if demo else (lambda v: self.info.get(tel["id"], v))
             d["current"] = dict(describe(cur, now), info=facts(cur)) if cur else None
             d["recent"] = [dict(describe(v, now), ago_s=round(now - v["end"]), info=facts(v)) for v in recent]
