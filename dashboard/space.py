@@ -374,6 +374,11 @@ class SpaceFeed:
                 self.cache.update(json.loads(self.path.read_text()))
             except (OSError, ValueError) as e:
                 log.warning("space: ignoring unreadable cache %s: %s", self.path, e)
+        # A restart (usually a deploy with new code) retries failed sources right away instead of
+        # waiting out RETRY from before the restart. Sources that worked keep their schedule.
+        for src in self.cache["sources"].values():
+            if src.get("error"):
+                src["tried_at"] = 0
 
     # -- network
     @staticmethod

@@ -190,6 +190,19 @@ class FeedTest(unittest.TestCase):
         err = f.view(now=T)["sources"]["schedule:hst"]["error"]
         self.assertIn("across: api.across.sciencecloud.nasa.gov/v1/observatory/: ", err)
 
+    def test_restart_retries_failed_sources_at_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            down = FakeNet(fail=["celestrak"])
+            f = space.SpaceFeed(d, opener=down, poster=offline, fetch_bytes=offline, stl_opener=offline)
+            f.refresh(now=T)
+            self.assertIsNotNone(f.view(now=T)["sources"]["tle"]["error"])
+            up = FakeNet()
+            g = space.SpaceFeed(d, opener=up, poster=offline, fetch_bytes=offline, stl_opener=offline)
+            g.refresh(now=T + 60)                                       # well inside RETRY
+            self.assertTrue(any("celestrak" in u for u in up.calls))   # failed source: retried at once
+            self.assertFalse(any("horizons" in u for u in up.calls))   # working source: not refetched
+            self.assertIsNone(g.view(now=T + 60)["sources"]["tle"]["error"])
+
     def test_demo_respects_pointing_limits(self):
         f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline, stl_opener=offline)
         for k in range(0, 400, 37):                                     # different days through the year
