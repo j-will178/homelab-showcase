@@ -184,6 +184,12 @@ class FeedTest(unittest.TestCase):
         f.refresh(now=T + space.RETRY + 1)
         self.assertIsNotNone(f.view(now=T)["telescopes"][0]["position"])
 
+    def test_schedule_error_names_the_failing_request(self):
+        f = space.SpaceFeed(None, opener=FakeNet(fail=["/observatory/"]), poster=offline, fetch_bytes=offline)
+        f.refresh(now=T)
+        err = f.view(now=T)["sources"]["schedule:hst"]["error"]
+        self.assertTrue(err.startswith("api.across.sciencecloud.nasa.gov/v1/observatory/: "), err)
+
     def test_demo_respects_pointing_limits(self):
         f = space.SpaceFeed(None, mode="demo", opener=FakeNet(fail=["http"]), poster=offline, fetch_bytes=offline)
         for k in range(0, 400, 37):                                     # different days through the year

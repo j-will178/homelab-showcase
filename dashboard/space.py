@@ -358,7 +358,13 @@ class SpaceFeed:
         return body.decode("utf-8", "replace")
 
     def _json(self, url):
-        return json.loads(self.open(url))
+        """GET + JSON. A failure names the request ("api.across...nasa.gov/v1/observatory/: HTTP Error 500"),
+        so /api/space's `sources` says which call broke, not just how."""
+        try:
+            return json.loads(self.open(url))
+        except Exception as e:           # noqa: BLE001 - re-raised with the request named
+            u = urllib.parse.urlsplit(url)
+            raise RuntimeError(f"{u.netloc}{u.path}: {e}") from e
 
     def _due(self, name, every, now):
         s = self.cache["sources"].get(name) or {}
