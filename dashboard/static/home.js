@@ -28,6 +28,22 @@
     $('rackLive').innerHTML = out.join('');
   }
 
+  async function spaceTile() {
+    const out = [];
+    try {
+      const d = await getJson('api/space');
+      for (const id of ['jwst', 'hst']) {
+        const t = (d.telescopes || []).find(x => x.id === id);
+        if (!t) continue;
+        const c = t.current;
+        const end = c ? new Date(c.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        out.push(li(c ? 'ok' : 'dim', c ? `${t.name} · ${c.target} · until ${end}` : `${t.name} · between targets`));
+      }
+      if (d.mode === 'demo') out.push(li('dim', 'simulated data'));
+    } catch { out.push(li('dim', 'space data unavailable')); }
+    $('spaceLive').innerHTML = out.join('');
+  }
+
   function clock() {
     $('homeClock').textContent = new Date().toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
@@ -40,4 +56,5 @@
 
   clock(); setInterval(clock, 15000);
   rack(); setInterval(rack, 60000);
+  spaceTile(); setInterval(spaceTile, 60000);
 })();

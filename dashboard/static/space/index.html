@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Served at /space/; shared assets, api/ and config.json live one level up. -->
+<base href="../">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space · Homelab</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="space.css">
+</head>
+<body class="space-page">
+<main id="space">
+  <header class="sp-head">
+    <div>
+      <h1>Space</h1>
+      <p class="sub">Where Hubble and Webb are, which way they point, and what they're scheduled to observe</p>
+    </div>
+    <div class="chips" id="spChips"></div>
+  </header>
+
+  <section class="sp-views">
+    <figure class="sp-panel">
+      <figcaption>Where they are <span class="muted">· looking down on Earth's orbit, Sun to the left, not to scale</span></figcaption>
+      <svg id="spTop" viewBox="0 0 760 470" role="img" aria-label="Top-down view of Hubble and Webb and their pointing"></svg>
+    </figure>
+    <figure class="sp-panel">
+      <figcaption>What they're looking at <span class="muted">· whole sky, RA increasing to the left</span></figcaption>
+      <svg id="spSky" viewBox="0 0 760 470" role="img" aria-label="All-sky map of current and recent targets"></svg>
+    </figure>
+  </section>
+
+  <section class="sp-cards" id="spCards"></section>
+</main>
+
+<nav class="sp-nav"><a href="home/">&#8962; Home</a><span class="muted"><kbd>Home</kbd> home · <kbd>R</kbd> rack dashboard</span></nav>
+
+<script src="vendor/d3.min.js"></script>
+<script src="vendor/d3-geo-projection.min.js"></script>
+<script src="space.js"></script>
+</body>
+</html>

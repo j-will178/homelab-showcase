@@ -1,0 +1,41 @@
+/* Space section (/space/). Shares style.css's colors and fonts. */
+:root { --hst: #2dd4bf; --jwst: #a78bfa; --sun: #fbbf24; --avoid: #f87171; --ok: #4ade80; --warn: #fbbf24; }
+html, body.space-page { overflow: auto; }
+#space { padding: 22px 28px 70px; max-width: 1700px; margin: 0 auto; }
+.sp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+.sp-head h1 { margin: 0; font-size: 24px; font-weight: 600; }
+.sp-head .sub { margin: 4px 0 0; color: var(--muted); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.chip { font-family: var(--mono); font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.muted { color: var(--muted); }
+.sp-views { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sp-panel { margin: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 10px 12px 6px; }
+.sp-panel figcaption { font-size: 13px; font-weight: 600; margin: 2px 2px 6px; }
+.sp-panel figcaption .muted { font-weight: 400; }
+.sp-panel svg { width: 100%; height: auto; display: block; }
+.sp-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.sp-card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 14px 16px; border-top: 3px solid var(--tc); }
+.sp-card h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; display: flex; justify-content: space-between; gap: 10px; }
+.sp-card h2 .pos { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--muted); }
+.sp-card .now { font-size: 20px; font-weight: 600; color: var(--tc); }
+.sp-card .meta { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
+.sp-card ol { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.sp-card li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.sp-card li .t { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-card li .w { color: var(--muted); white-space: nowrap; }
+.sp-card li.next .t { color: var(--muted); }
+.sp-card .none { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.sp-nav { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; font-size: 12px; }
+.sp-nav a { color: var(--text); text-decoration: none; }
+.sp-nav a:hover { color: var(--accent); }
+/* svg */
+#spTop text, #spSky text { font-family: var(--font); font-size: 12px; fill: var(--text); }
+#spTop .lbl-muted, #spSky .lbl-muted { fill: var(--muted); }
+#spTop .lbl-b, #spSky .lbl-b { font-weight: 600; font-size: 13px; }
+#spSky .sphere { fill: rgba(120, 160, 200, 0.03); stroke: var(--border); stroke-width: 0.8; }
+#spSky .grat { fill: none; stroke: var(--grat); stroke-width: 0.7; }
+#spSky .eq { fill: none; stroke: rgba(120, 160, 200, 0.22); stroke-width: 0.8; stroke-dasharray: 2 4; }
+#spSky .ecl { fill: none; stroke: var(--sun); stroke-opacity: 0.6; stroke-width: 1; stroke-dasharray: 6 4; }
+#spSky .gal { fill: none; stroke: rgba(200, 210, 255, 0.035); stroke-width: 14; stroke-linecap: round; }

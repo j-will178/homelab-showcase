@@ -6,9 +6,9 @@ A full-screen slideshow for the rack monitor, served by the OptiPlex. It rotates
 
 | URL | What |
 |---|---|
-| `/home/` | Home page: one tile per section with a live line (drive health, honeypot sessions). Keys **1**–**9** open a section. |
+| `/home/` | Home page: one tile per section with live lines (drive health, honeypot sessions, what each telescope observes now). Keys **1**–**9** open a section. |
 | `/rack/` | This slideshow (the screens below). **Home** key or the *Home* item in the screen bar goes back. |
-| `/space/` | Planned: where Hubble and Webb are pointing (tile shows "coming soon"). Its data API, `/api/space`, is live: see *Space data* below. |
+| `/space/` | Where Hubble and Webb are and what they're scheduled to observe: a top-down view (Sun to the left, each telescope's pointing line with its ▲/▼ tilt and its allowed zone) and a whole-sky map (current target, a fading trail through recent ones with names, the ecliptic, Milky Way plane and Sun limits), plus a card per telescope (now, next 3, last 6). Refreshes every 30 s; **Home** / **R** keys go to the home page / rack dashboard. Data: *Space data* below. |
 | `/` | Signpost: a bare `/` goes to `/home/`; `/` with options (the old links, e.g. `/?projection=robinson`) goes to `/rack/` with them, so existing bookmarks and the kiosk keep working. |
 
 Section pages use `<base href="../">`, so they share the files in `static/` (CSS, JS, `vendor/`, `config.json`) and call `api/…` exactly as before; the static demo works the same under its GitHub Pages subpath.

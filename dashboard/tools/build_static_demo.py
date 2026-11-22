@@ -104,7 +104,7 @@ def main():
          "repo_url": args.repo_url}))
 
     # Every section page fetches api/*: demo-api.js answers those calls from demo-data.json.
-    for page in ("rack/index.html", "home/index.html"):
+    for page in ("rack/index.html", "home/index.html", "space/index.html"):
         index = args.out / page
         html = index.read_text()
         first_script = html.index("<script src=")
