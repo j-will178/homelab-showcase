@@ -51,6 +51,9 @@ TELESCOPES = [
     {"id": "jwst", "name": "Webb", "stl": "webb", "across": "JWST", "orbit": "horizons", "naif": -170, "sun": [85, 135]},
 ]
 EVERY = {"schedule": 3600, "tle": 12 * 3600, "horizons": 24 * 3600}
+# Bump when the cached schedule's shape or the parsers change: a cache written by another version
+# refetches the schedules on start instead of serving its old reading for up to an hour.
+SCHEDULE_FORMAT = 3
 RETRY = 15 * 60                     # after a failed fetch
 PAST, AHEAD = 3 * 86400, 2 * 86400  # schedule window around now
 VISIT_GAP = 2 * 3600                # exposures of one target closer than this are one visit
@@ -283,7 +286,10 @@ def stl_observations(items):
         except (KeyError, TypeError, ValueError):
             continue
         tg = next((t for t in o.get("targets") or [] if not t.get("background")), None) or {}
-        name = _text(tg.get("standardName")) or _text(tg.get("name")) or "unnamed"
+        vt = _text((o.get("visitType") or {}).get("title"))
+        # No named target (calibrations, some parallels): say what the visit is instead of "unnamed".
+        name = (_text(tg.get("standardName")) or _text(tg.get("name")) or vt
+                or _text((o.get("proposal") or {}).get("title"), 60) or "unnamed")
         ra = _num(o.get("boreSightRightAscensionInDegrees"), 0, 360)
         dec = _num(o.get("boreSightDeclinationInDegrees"), -90, 90)
         if ra is None or dec is None:
@@ -422,6 +428,11 @@ class SpaceFeed:
         for src in self.cache["sources"].values():
             if src.get("error"):
                 src["tried_at"] = 0
+        if self.cache.get("schedule_format") != SCHEDULE_FORMAT:
+            for name, src in self.cache["sources"].items():
+                if name.startswith("schedule:"):
+                    src["ok_at"] = src["tried_at"] = 0
+            self.cache["schedule_format"] = SCHEDULE_FORMAT
 
     # -- network
     @staticmethod
@@ -528,7 +539,11 @@ class SpaceFeed:
             if meta.get("code") not in (200, None) or not isinstance(res.get("data"), list):
                 raise RuntimeError(f"spacetelescopelive.org ({hdr['endpoint']}): {meta.get('code')} {meta.get('message')}")
             items += res["data"]
-        return stl_observations(items)
+        exp = stl_observations(items)
+        if items and not exp:                 # a reply we can't read is a failure, not an empty schedule
+            raise RuntimeError(f"spacetelescopelive.org/api/get/{tel['stl']}: {len(items)} records, none readable "
+                               f"(fields: {', '.join(sorted(items[0])[:8]) if isinstance(items[0], dict) else type(items[0]).__name__})")
+        return exp
 
     def fetch_schedule(self, tel, now):
         ref = self._across_id(tel)
@@ -660,7 +675,8 @@ class SpaceFeed:
                 log.warning("space: %s position: %s", tel["id"], e)
             exp = demo_schedule(tel, now) if demo else cache["schedules"].get(tel["id"]) or []
             cur, recent, upcoming = pointing(with_programs(visits(exp), cache.get("stl_programs") or {}), now)
-            facts = (lambda v: space_info.demo_info(tel["id"], v)) if demo else (lambda v: self.info.get(tel["id"], v))
+            facts = (lambda v: space_info.demo_info(tel["id"], v)) if demo else (lambda v: self.info.get(tel["id"], v)
+                                                                                  or space_info.pending_info(tel["id"], v))
             d["current"] = dict(describe(cur, now), info=facts(cur)) if cur else None
             d["recent"] = [dict(describe(v, now), ago_s=round(now - v["end"]), info=facts(v)) for v in recent]
             d["next"] = [dict(describe(v, now), info=facts(v)) for v in upcoming]

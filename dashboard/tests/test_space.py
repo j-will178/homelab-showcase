@@ -327,3 +327,48 @@ class StlHubbleTest(unittest.TestCase):
         n = len(asked)
         f.stl_programs(space.TELESCOPES[0], f.cache["schedules"]["hst"], T_HST)
         self.assertEqual(len(asked), n)                                    # cached: no second lookup
+
+
+class StlRobustnessTest(unittest.TestCase):
+    def test_unreadable_records_are_an_error_not_an_empty_schedule(self):
+        f = space.SpaceFeed(None, opener=FakeNet(), poster=offline, fetch_bytes=offline,
+                            stl_opener=lambda u, h: json.dumps({"data": [{"somethingNew": 1}], "_meta": {"code": 200}}))
+        with self.assertRaises(RuntimeError) as cm:
+            f.fetch_stl(space.TELESCOPES[0], T_STL)
+        self.assertIn("none readable (fields: somethingNew)", str(cm.exception))
+        f.refresh(now=T)                                               # falls back to ACROSS (faked: one target)
+        self.assertEqual(f.view(now=T)["sources"]["schedule:hst"]["via"], "across")
+
+    def test_new_format_version_refetches_schedules_on_start(self):
+        with tempfile.TemporaryDirectory() as d:
+            opener = lambda u, h: json.dumps(FIX.get("schedule_2026-11-22T0") if u.endswith("/webb") else {"data": [], "_meta": {"code": 200}})
+            f = space.SpaceFeed(d, opener=FakeNet(), poster=offline, fetch_bytes=offline, stl_opener=opener)
+            f.refresh(now=T_STL)
+            cache = json.loads((Path(d) / "space.json").read_text())
+            cache["schedule_format"] = space.SCHEDULE_FORMAT - 1          # written by an older version
+            (Path(d) / "space.json").write_text(json.dumps(cache))
+            calls = []
+            g = space.SpaceFeed(d, opener=FakeNet(), poster=offline, fetch_bytes=offline,
+                                stl_opener=lambda u, h: (calls.append(h["endpoint"]), opener(u, h))[1])
+            g.refresh(now=T_STL + 60)                                     # long before the hourly refresh
+            self.assertTrue(any(c.startswith("schedule/") for c in calls))
+            calls.clear()
+            space.SpaceFeed(d, opener=FakeNet(), poster=offline, fetch_bytes=offline,
+                            stl_opener=lambda u, h: (calls.append(h["endpoint"]), opener(u, h))[1]).refresh(now=T_STL + 120)
+            self.assertFalse(any(c.startswith("schedule/") for c in calls))   # same version: no refetch
+
+    def test_visit_without_named_target_uses_visit_type_then_program(self):
+        item = json.loads(json.dumps(FIX["schedule_2026-11-22T0"]["data"][2]))
+        item["targets"] = []
+        self.assertEqual(space.stl_observations([item])[0]["target"], "Prime WFSC Routine")
+        item["visitType"] = None
+        self.assertEqual(space.stl_observations([item])[0]["target"], "JWST Routine Wavefront Sensing and Control for Cycle 5")
+
+    def test_program_shows_before_the_lookup_finishes(self):
+        opener = lambda u, h: json.dumps(FIX.get("schedule_2026-11-22T0") if u.endswith("/webb") else {"data": [], "_meta": {"code": 200}})
+        f = space.SpaceFeed(None, opener=FakeNet(), poster=offline, fetch_bytes=offline, stl_opener=opener)
+        f.refresh(now=T_STL)                                           # info lookups fail here (not faked)
+        info = f.view(now=T_STL)["telescopes"][1]["current"]["info"]
+        self.assertTrue(info["pending"])
+        self.assertTrue(info["program"]["title"].startswith("The Core of the Iceberg"))
+        self.assertIn("program-information?id=9645", info["program"]["url"])

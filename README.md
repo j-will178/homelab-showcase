@@ -138,4 +138,4 @@ python3 dashboard/collector.py --demo    # then open http://localhost:8080
 
 This is a public export of my private homelab repo. Its `showcase/export.py` copies an allowlist of folders on every merge, and refuses to publish anything that looks like a secret: keys, tokens, public IPs, personal emails or machine names. History starts at the export; the private repo has the full PR-by-PR history. Built with [Claude Code](https://claude.com/claude-code) as a pair programmer: I set direction and constraints and reviewed and ran everything on real hardware; most of the code was written in that pairing.
 
-Exported from commit `29b7cba` · [MIT License](LICENSE)
+Exported from commit `9aa9f19` · [MIT License](LICENSE)

@@ -239,11 +239,10 @@
       : placeholder(c);
     const lines = [];
     if (!isCurrent) lines.push(`<p class="sel-note">Showing <b>${esc(v.target)}</b> · ${v.ago_s != null ? `${dur(v.ago_s)} ago` : `in ${dur(until(v.begin))}`}</p>`);
-    if (!f) {
-      lines.push('<p class="fact muted">Looking this target up…</p>');
-    } else {
+    if (!f || f.pending) lines.push('<p class="fact muted">Looking this target up…</p>');
+    if (f) {
       const badges = [f.type, f.morph].filter(Boolean).map((b, i) => `<span class="badge${i ? ' dim' : ''}" style="--tc:${c}">${esc(b)}</span>`);
-      if (!f.resolved) badges.push('<span class="badge dim">Survey field · no catalog match</span>');
+      if (f.resolved === false) badges.push('<span class="badge dim">Survey field · no catalog match</span>');
       if (v.category === 'Calibration' || /calibration|wavefront/i.test(v.visit_type || '')) badges.push(`<span class="badge dim">${esc(v.visit_type || 'Calibration')}</span>`);
       if (badges.length) lines.push(`<p>${badges.join('')}</p>`);
       const facts = [f.distance && `<b>${esc(f.distance)}</b>`, f.aliases?.length && `also called ${esc(f.aliases.join(', '))}`].filter(Boolean);

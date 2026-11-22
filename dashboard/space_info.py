@@ -368,6 +368,14 @@ def _tidy(s):
     return re.sub(r"\s+", " ", str(s)).strip() if s else s
 
 
+def pending_info(tel, visit):
+    """Before a target's lookup finishes: what the schedule itself says (the program), marked pending."""
+    p = visit.get("program") or {}
+    if not p.get("title"):
+        return None
+    return {"pending": True, "program": dict(p, url=PROGRAM_URL[tel].format(id=p["id"])), "sources": ["STScI"]}
+
+
 # ---------------------------------------------------------------- demo facts (no network)
 
 DEMO_FACTS = {
