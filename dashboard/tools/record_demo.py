@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Record the README hero: the static demo cycling through its screens and playing a
-"Deploy all" rollout and the honeypot screens, with a play button and "Open the live demo" drawn over it,
+"Deploy all" rollout, the honeypot screens, the home page and the Space section, with a play button and "Open the live demo" drawn over it,
 encoded as an animated WebP.
 
     python3 dashboard/tools/record_demo.py showcase/screenshots/demo.webp
@@ -71,6 +71,10 @@ async def record(site_url, overlay_path, video_dir):
         await page.wait_for_timeout(4500)
         await page.keyboard.press("7")
         await page.wait_for_timeout(4500)
+        await page.keyboard.press("Home")             # then the home page and the Space section
+        await page.wait_for_timeout(2500)
+        await page.keyboard.press("2")
+        await page.wait_for_timeout(5500)
         await ctx.close()
         await browser.close()
 

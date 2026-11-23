@@ -81,9 +81,6 @@
     svg.append('text').attr('x', 22).attr('y', E[1] - 10).attr('class', 'lbl-muted').text('To the Sun');
     svg.append('line').attr('x1', E[0]).attr('y1', E[1]).attr('x2', webbAt[0]).attr('y2', webbAt[1])
       .attr('stroke', 'var(--border)').attr('stroke-dasharray', '3 5');
-    const mid = [(E[0] + webbAt[0]) / 2, (E[1] + webbAt[1]) / 2];
-    svg.append('text').attr('x', mid[0]).attr('y', mid[1] + 18).attr('text-anchor', 'middle').attr('class', 'lbl-muted')
-      .text(jwst?.position ? `${(jwst.position.dist_km / 1e6).toFixed(2)} million km` : '');
     svg.append('circle').attr('cx', E[0]).attr('cy', E[1]).attr('r', 42).attr('fill', 'none')
       .attr('stroke', COLOR.hst).attr('stroke-opacity', 0.5).attr('stroke-dasharray', '2 3');
     svg.append('circle').attr('cx', E[0]).attr('cy', E[1]).attr('r', 17).attr('fill', '#1d4f7a').attr('stroke', '#5fa8e6').attr('stroke-width', 0.8);
@@ -119,7 +116,17 @@
     if (hubbleAt) svg.append('circle').attr('cx', hubbleAt[0]).attr('cy', hubbleAt[1]).attr('r', 5.5).attr('fill', COLOR.hst).attr('stroke', '#0b1a19');
     if (jwst) {
       svg.append('circle').attr('cx', webbAt[0]).attr('cy', webbAt[1]).attr('r', 7).attr('fill', COLOR.jwst).attr('stroke', '#17132b');
-      svg.append('text').attr('x', webbAt[0]).attr('y', webbAt[1] + 26).attr('text-anchor', 'middle').attr('class', 'lbl-b').text('Webb (L2)');
+      // the name goes on the side Webb's pointing line doesn't use
+      const wUp = jwst.current?.ecl_lon != null && Math.sin(ang(jwst.current.ecl_lon) * D) > 0;
+      svg.append('text').attr('x', webbAt[0]).attr('y', webbAt[1] + (wUp ? 26 : -16)).attr('text-anchor', 'middle').attr('class', 'lbl-b').text('Webb (L2)');
+    }
+    // distance on the Earth-Webb line: below it, or above if a target label is already there
+    if (jwst?.position) {
+      const text = `${(jwst.position.dist_km / 1e6).toFixed(2)} million km`, w = textW(text, 12);
+      const mid = [(E[0] + webbAt[0]) / 2, (E[1] + webbAt[1]) / 2];
+      const hits = y => placed.some(([bx, by, bw, bh]) => mid[0] - w / 2 < bx + bw && mid[0] + w / 2 > bx && y - 12 < by + bh && y + 4 > by);
+      const y = [mid[1] + 18, mid[1] - 10, mid[1] + 34, mid[1] - 26].find(v => !hits(v)) ?? mid[1] + 18;
+      svg.append('text').attr('x', mid[0]).attr('y', y).attr('text-anchor', 'middle').attr('class', 'lbl-muted').text(text);
     }
     // legend
     const L = [[COLOR.sun, 0.13, 'Where Webb can point (85–135° from the Sun; in-plane slice)'],

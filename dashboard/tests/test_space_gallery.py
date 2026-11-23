@@ -104,7 +104,8 @@ class FeedTest(unittest.TestCase):
     def test_demo(self):
         v = sg.SpaceGallery(None, mode="demo").view(now=1_800_000_000)
         self.assertEqual(len(v["items"]), 4)
-        self.assertTrue(all(i["image"] is None for i in v["items"]))
+        self.assertTrue(all(i["image"].startswith("data:image/svg+xml,") for i in v["items"]))
+        self.assertEqual(sg.demo_view(1)["items"][0]["image"], sg.demo_view(2)["items"][0]["image"])   # same drawing every build
 
 
 if __name__ == "__main__":

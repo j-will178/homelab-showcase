@@ -4,7 +4,7 @@ This is the source of truth for how the lab is laid out. **Update it in the same
 
 Diagrams are Mermaid, so GitHub renders them inline and changes show up as readable diffs.
 
-_Last updated: 2026-11-22_
+_Last updated: 2026-11-23_
 
 ## Hosts
 
@@ -70,8 +70,8 @@ flowchart TB
     M2 -. "agent update<br/>every 15 min" .-> GH
     CO -. "git pull every 2 min<br/>(read-only deploy key)" .-> GH
 
-    SPACE[("STScI Space Telescope Live · NASA ACROSS<br/>CelesTrak · JPL Horizons<br/>CDS/SIMBAD · MAST · Wikipedia<br/>public space data")]
-    OPT -. "HTTPS: schedules hourly, orbits 12 h / daily,<br/>target facts once per target" .-> SPACE
+    SPACE[("STScI Space Telescope Live · NASA ACROSS<br/>CelesTrak · JPL Horizons<br/>CDS/SIMBAD · MAST · Wikipedia<br/>ESA/Webb · ESA/Hubble image feeds<br/>public space data")]
+    OPT -. "HTTPS: schedules hourly, orbits 12 h / daily,<br/>target facts once per target, release images 6 h" .-> SPACE
 ```
 
 Notes:
@@ -90,7 +90,7 @@ Notes:
 
 | Host | Service | Port | Deployed by |
 |---|---|---|---|
-| optiplex-management | `rack-dashboard` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated until cloud-ops posts the first real events, then real for good: 30 days in `honeypot.db`); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN); HTTPS out for the space section (spacetelescopelive.org hourly, api.across.sciencecloud.nasa.gov as its fallback, celestrak.org every 12 h, ssd.jpl.nasa.gov daily; target facts once per new target from mast.stsci.edu, skyview.gsfc.nasa.gov, archive.stsci.edu, en.wikipedia.org, and cds.unistra.fr / simbad.cds.unistra.fr / alasky.cds.unistra.fr, which time out from this network as of 2026-11-22; gallery release images every 6 h from esawebb.org, esahubble.org, cdn.esawebb.org, cdn.esahubble.org, with feeds.feedburner.com as the feed mirror) | `homelab-deploy.timer` |
+| optiplex-management | `rack-dashboard`: sections `/home/`, `/rack/`, `/space/`, `/space/gallery/` (noise map, drive health, compute, tasks, deployments, honeypot and attack patterns (simulated until cloud-ops posts the first real events, then real for good: 30 days in `honeypot.db`); replaced `noise-map`) | UDP 5514 in (syslog from OPNsense), TCP 8080 in (web + SMART/metrics reports from LAN); HTTPS out for the space section (spacetelescopelive.org hourly, api.across.sciencecloud.nasa.gov as its fallback, celestrak.org every 12 h, ssd.jpl.nasa.gov daily; target facts once per new target from mast.stsci.edu, skyview.gsfc.nasa.gov, archive.stsci.edu, en.wikipedia.org, and cds.unistra.fr / simbad.cds.unistra.fr / alasky.cds.unistra.fr, which time out from this network as of 2026-11-22; gallery release images every 6 h from esawebb.org, esahubble.org, cdn.esawebb.org, cdn.esahubble.org, with feeds.feedburner.com as the feed mirror) | `homelab-deploy.timer` |
 | optiplex-management | `rack-metrics-agent.service` (10 s loop) + `rack-smart-agent.timer` (15 min) | → 127.0.0.1:8080 | `homelab-deploy.timer` |
 | homeshare, backup-compute | Scheduled task *Rack Dashboard SMART agent* (`Invoke-RackAgent.ps1`, every minute: keeps task *Rack Dashboard metrics* running, a 10 s loop; every 15 min: update + SMART) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `Install-SmartAgent.ps1 -AutoUpdate`) |
 | OPNsense | configd action `rackagent smart-push` (`run.sh`) + GUI cron **every minute** (keeps the 10 s metrics loop running under `daemon -r`; update + SMART every 15 min) | → optiplex-management:8080, → github.com:22 | self-updating (one-time `install-opnsense.sh`) |
@@ -135,7 +135,7 @@ The cloud job runs `backups/Invoke-CloudBackup.ps1` with a Kopia version pinned 
 | 2 | backup-compute (SilverStone RM42-502 4U) | Storage + Jellyfin |
 | 3 | Tripp Lite 1200 W UPS | Feeds the PDU |
 | 4 | StarTech 8-outlet PDU | Everything plugs in here |
-| 5 | Shelf | OPNsense (left) · optiplex-management (Dell OptiPlex, right) with TRENDnet switch on top |
+| 5 | Shelf | OPNsense (left) · optiplex-management (Dell OptiPlex, right) · TRENDnet switch (no longer on top of the OptiPlex) |
 
 About 4U free.
 

@@ -225,15 +225,36 @@ def _iso(t):
     return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if t else None
 
 
+def _demo_image(seed, w, h, hues):
+    """A drawn stand-in for a release image (SVG data URI): glowing gas clouds and stars, no network."""
+    import random
+    from urllib.parse import quote
+    r = random.Random(seed)
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
+             f'<defs><filter id="b" filterUnits="userSpaceOnUse" x="0" y="0" width="{w}" height="{h}">'
+             f'<feGaussianBlur stdDeviation="{min(w, h) // 14}"/></filter></defs>',
+             f'<rect width="{w}" height="{h}" fill="#05060b"/><g filter="url(#b)">']
+    for k in range(9):
+        c = hues[k % len(hues)]
+        parts.append(f'<ellipse cx="{r.uniform(.15, .85) * w:.0f}" cy="{r.uniform(.12, .88) * h:.0f}" rx="{r.uniform(.12, .3) * w:.0f}" '
+                     f'ry="{r.uniform(.1, .26) * h:.0f}" fill="{c}" opacity="{r.uniform(.35, .7):.2f}"/>')
+    parts.append('</g>')
+    for _ in range(260):
+        parts.append(f'<circle cx="{r.uniform(0, w):.0f}" cy="{r.uniform(0, h):.0f}" r="{r.choice((.6, .8, 1, 1.2, 1.6, 2.4)):.1f}" '
+                     f'fill="#fff6e8" opacity="{r.uniform(.5, 1):.2f}"/>')
+    parts.append('</svg>')
+    return "data:image/svg+xml," + quote("".join(parts))
+
+
 def demo_view(now):
-    """--demo and the static demo: titles only, no images (no network)."""
-    rows = [("Webb", "Webb release", "A barred spiral galaxy in infrared light"),
-            ("Hubble", "Hubble Picture of the Week", "A star-forming region in a nearby dwarf galaxy"),
-            ("Webb", "Webb Picture of the Month", "Dust shells around a pair of massive stars"),
-            ("Hubble", "Hubble Picture of the Week", "A galaxy cluster bending light from far behind it")]
+    """--demo and the static demo: simulated titles with drawn stand-in images (no network)."""
+    rows = [("Webb", "Webb release", "A barred spiral galaxy in infrared light", (1600, 1000), ("#c2521c", "#e08a3c", "#7d8fd6", "#5a2210")),
+            ("Hubble", "Hubble Picture of the Week", "A star-forming region in a nearby dwarf galaxy", (1000, 1300), ("#1f8f8a", "#c04f8e", "#e7c27a", "#203a7a")),
+            ("Webb", "Webb Picture of the Month", "Dust shells around a pair of massive stars", (1600, 1100), ("#b8642a", "#6b3fa0", "#d9a35a", "#2b1d4f")),
+            ("Hubble", "Hubble Picture of the Week", "A galaxy cluster bending light from far behind it", (1920, 1080), ("#3a5fa8", "#d6c19a", "#7a3a6e", "#16243f"))]
     return {"mode": "demo", "updated_at": _iso(now), "error": None,
             "items": [{"id": f"demo{i}", "title": f"{t} (simulated)", "telescope": tel, "kind": kind,
-                       "date": _iso(now - i * 5 * 86400), "summary": "Simulated entry: the live gallery shows ESA/Webb and "
-                       "ESA/Hubble release images here.", "url": None,
-                       "credit": "ESA/Webb, NASA & CSA" if tel == "Webb" else "ESA/Hubble & NASA", "image": None}
-                      for i, (tel, kind, t) in enumerate(rows)]}
+                       "date": _iso(now - i * 5 * 86400), "summary": "Simulated entry with a drawn stand-in image: the live gallery shows "
+                       "the latest ESA/Webb and ESA/Hubble release images here.", "url": None,
+                       "credit": "simulated image", "image": _demo_image(i, w, h, hues)}
+                      for i, (tel, kind, t, (w, h), hues) in enumerate(rows)]}
