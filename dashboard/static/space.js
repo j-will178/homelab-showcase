@@ -327,6 +327,7 @@
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === 'Home') location.href = 'home/';
     else if (e.key === 'r' || e.key === 'R') location.href = 'rack/';
+    else if (e.key === 'g' || e.key === 'G') location.href = 'space/gallery/';
   });
   refresh();
   setInterval(refresh, REFRESH_MS);

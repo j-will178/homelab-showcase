@@ -116,6 +116,7 @@
       case 'honeypot': return json(honeypotNow());
       case 'honeypot/patterns': return json(patternsNow());
       case 'space': return json(data.space);
+      case 'space/gallery': return json(data.space_gallery);
       case 'deploy':
         if (method === 'POST') {
           if (deployAt !== null && (Date.now() - deployAt) / 1000 < 60) {

@@ -25,6 +25,7 @@ import honeypot  # noqa: E402
 import metrics  # noqa: E402
 import smart    # noqa: E402
 import space    # noqa: E402
+import space_gallery    # noqa: E402
 
 ORDER = ["opnsense", "optiplex-management", "homeshare", "backup-compute"]
 
@@ -73,6 +74,7 @@ def snapshot():
         "honeypot": hp.view(now=now),
         # Space: generated, like --demo (the static demo never calls NASA). A snapshot at build time.
         "space": space.SpaceFeed(None, mode="demo").view(now=now),
+        "space_gallery": space_gallery.demo_view(now),
         "honeypot_patterns": hp.patterns_view(now=now),
         "honeypot_stream": honeypot_stream(sim, now),
         "smart": smart_store.view(now=now),
@@ -104,7 +106,7 @@ def main():
          "repo_url": args.repo_url}))
 
     # Every section page fetches api/*: demo-api.js answers those calls from demo-data.json.
-    for page in ("rack/index.html", "home/index.html", "space/index.html"):
+    for page in ("rack/index.html", "home/index.html", "space/index.html", "space/gallery/index.html"):
         index = args.out / page
         html = index.read_text()
         first_script = html.index("<script src=")

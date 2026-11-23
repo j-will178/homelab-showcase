@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Served at /space/gallery/; shared assets and api/ live two levels up. -->
+<base href="../../">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery · Space · Homelab</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="gallery.css">
+</head>
+<body class="gallery-page">
+<main id="gallery" aria-live="polite">
+  <figure id="gStage">
+    <img id="gImg" alt="">
+    <div id="gEmpty" class="g-empty" hidden>Loading the latest release images…</div>
+  </figure>
+  <section class="g-cap">
+    <div class="g-meta"><span id="gTel" class="g-tel"></span><span id="gKind"></span><span id="gDate"></span><span id="gCount" class="g-count"></span></div>
+    <h1 id="gTitle"></h1>
+    <p id="gSum"></p>
+    <p class="g-credit">Credit: <span id="gCredit"></span> <a id="gLink" target="_blank" rel="noopener">image page</a></p>
+  </section>
+  <div class="g-dots" id="gDots"></div>
+</main>
+<nav class="g-nav"><a href="home/">&#8962; Home</a><a href="space/">Space</a><span class="muted"><kbd>←</kbd><kbd>→</kbd> browse · <kbd>Space</kbd> pause · <kbd>S</kbd> space · <kbd>Home</kbd> home</span></nav>
+<script src="gallery.js"></script>
+</body>
+</html>

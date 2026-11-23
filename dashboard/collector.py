@@ -43,6 +43,7 @@ import honeypot
 import metrics
 import smart
 import space
+import space_gallery
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_REPORT_BYTES = 8 * 1024 * 1024
@@ -245,18 +246,29 @@ def make_handler(broker, page_config, smart_store=None, agent_token=None, metric
                 return self._honeypot_csv()
             if path == "/api/space/image":
                 return self._space_image()
+            if path == "/api/space/gallery":
+                gallery = getattr(space_feed, "gallery", None)
+                if not gallery:
+                    return self._json(404, {"error": "space section off"})
+                return self._json(200, gallery.view())
+            if path == "/api/space/gallery/image":
+                return self._space_image(gallery=True)
             if path == "/api/space":
                 if not space_feed:
                     return self._json(404, {"error": "space section off"})
                 return self._json(200, space_feed.view())
             return super().do_GET()
 
-        def _space_image(self):
+        def _space_image(self, gallery=False):
             # A cached sky-survey cutout for the Space info panel. Only serves what the
             # background lookups already saved; never fetches on a viewer's request.
             from urllib.parse import parse_qs, urlsplit
-            k = (parse_qs(urlsplit(self.path).query).get("k") or [""])[0]
-            f = space_feed.info.image_path(k) if space_feed else None
+            q = parse_qs(urlsplit(self.path).query)
+            if gallery:
+                g = getattr(space_feed, "gallery", None)
+                f = g.image_path((q.get("id") or [""])[0]) if g else None
+            else:
+                f = space_feed.info.image_path((q.get("k") or [""])[0]) if space_feed else None
             if not f:
                 return self._json(404, {"error": "no such image"})
             body = f.read_bytes()
@@ -547,8 +559,13 @@ def main():
     space_feed = None
     if space_mode != "off":
         space_feed = space.SpaceFeed(state_dir, mode=space_mode)
+        # The gallery's release images (ESA/Webb, ESA/Hubble feeds), every 6 h, cached in state/space-gallery/.
+        space_feed.gallery = space_gallery.SpaceGallery(
+            state_dir, mode=space_mode, opener=lambda url: space_feed._http(url, timeout=20),
+            fetch_bytes=space_feed._http_bytes)
         if space_mode == "live":
             space_feed.start_background()
+            space_feed.gallery.start_background()
         log.info("space: %s", space_mode)
 
     broker = Broker()
