@@ -43,7 +43,7 @@ It covers a FreeBSD firewall, a Linux management box, two Windows Server storage
 
 | | |
 |---|---|
-| ![Targets](screenshots/space-targets.png) **What each one is observing, and why.** For the current target: what kind of object it is, its distance, a two-sentence summary, the observing program and its PI, and the telescope's own newest public image of that spot. Then the planned schedule and recent targets. | ![Release gallery](screenshots/space-gallery.png) **Release gallery.** The newest Webb and Hubble release images, full screen, one every 20 s. Tall images pan slowly across the crop. Each shows its title, date, summary and credit. (The demo shows drawn stand-ins; the lab shows the real images.) |
+| ![Targets](screenshots/space-targets.png) **What each one is observing, and why.** For the current target: what kind of object it is, its distance, a two-sentence summary, the observing program and its PI, and the telescope's own newest public image of that spot. Then the planned schedule and recent targets. | ![Release gallery](screenshots/space-gallery.png) **Release gallery.** The newest Webb and Hubble release images, full screen, one every 20 s. Tall images pan slowly across the crop. Each shows its title, date, summary and credit. (The demo uses a fixed set of four Webb Pictures of the Month; the lab shows the newest releases.) |
 
 ## Architecture
 
@@ -178,4 +178,4 @@ python3 dashboard/collector.py --demo    # then open http://localhost:8080
 
 This is a public export of my private homelab repo. Its `showcase/export.py` copies an allowlist of folders on every merge, and refuses to publish anything that looks like a secret: keys, tokens, public IPs, personal emails or machine names. History starts at the export; the private repo has the full PR-by-PR history. Built with [Claude Code](https://claude.com/claude-code) as a pair programmer: I set direction and constraints and reviewed and ran everything on real hardware; most of the code was written in that pairing.
 
-Exported from commit `0daf965` · [MIT License](LICENSE)
+Exported from commit `97e5341` · [MIT License](LICENSE)

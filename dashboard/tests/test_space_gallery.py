@@ -104,8 +104,12 @@ class FeedTest(unittest.TestCase):
     def test_demo(self):
         v = sg.SpaceGallery(None, mode="demo").view(now=1_800_000_000)
         self.assertEqual(len(v["items"]), 4)
-        self.assertTrue(all(i["image"].startswith("data:image/svg+xml,") for i in v["items"]))
-        self.assertEqual(sg.demo_view(1)["items"][0]["image"], sg.demo_view(2)["items"][0]["image"])   # same drawing every build
+        static = Path(__file__).resolve().parents[1] / "static"
+        for i in v["items"]:
+            f = static / i["image"]
+            self.assertTrue(f.read_bytes().startswith(b"\xff\xd8"), i["image"])     # file is in the repo, a JPEG
+            self.assertTrue(i["credit"].startswith("ESA/Webb, NASA & CSA"))
+            self.assertEqual(i["url"], f"https://esawebb.org/images/{i['id']}/")
 
 
 if __name__ == "__main__":

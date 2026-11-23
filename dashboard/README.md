@@ -117,7 +117,7 @@ Health: **failed** if the last run failed or was aborted; **overdue** if it hasn
 
 ### Static demo (GitHub Pages)
 
-`python3 dashboard/tools/build_static_demo.py OUT_DIR` builds a backend-free copy of the dashboard. It's the real UI plus `demo-api.js`, which answers `api/*` from a snapshot of the collector's own demo data, replays the compute history every 10 s, and plays a rollout when *Deploy all* is pressed. The noise map simulates its traffic in the browser already. Used by the public showcase (see the top-level README). `?speed=5` plays it 5× faster; `dashboard/tools/record_demo.py` uses that to record the README's animated hero. `dashboard/tools/take_screenshots.py showcase/screenshots` retakes the showcase screenshots from the same demo (badge hidden). The demo gallery uses drawn SVG stand-ins (`space_gallery.demo_view`), never real images.
+`python3 dashboard/tools/build_static_demo.py OUT_DIR` builds a backend-free copy of the dashboard. It's the real UI plus `demo-api.js`, which answers `api/*` from a snapshot of the collector's own demo data, replays the compute history every 10 s, and plays a rollout when *Deploy all* is pressed. The noise map simulates its traffic in the browser already. Used by the public showcase (see the top-level README). `?speed=5` plays it 5× faster; `dashboard/tools/record_demo.py` uses that to record the README's animated hero. `dashboard/tools/take_screenshots.py showcase/screenshots` retakes the showcase screenshots from the same demo (badge hidden). The demo gallery shows four real ESA/Webb Pictures of the Month kept in `static/space/gallery/demo/` (CC BY 4.0, credited; `space_gallery.DEMO_ITEMS`), so the demo never fetches anything.
 
 ### Credential relay
 
