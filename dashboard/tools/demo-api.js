@@ -143,5 +143,23 @@
       .demo-badge a{color:#7dd3fc}.demo-badge kbd{font:11px ui-monospace,monospace;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 4px;margin:0 1px}`;
     document.head.appendChild(s);
     document.body.appendChild(b);
+
+    // On the home page, a plain notice under the title: this is not the real lab.
+    const home = document.querySelector('#home header');
+    if (home) {
+      const n = document.createElement('aside');
+      n.className = 'demo-notice';
+      n.setAttribute('role', 'note');
+      n.innerHTML = `<strong>Demo, not the live lab.</strong> This GitHub Pages copy runs entirely in your browser on
+        <b>simulated data and visuals</b>: the hosts, metrics, deployments, honeypot attacks, telescope schedules and targets
+        are generated, and the gallery shows a fixed set of Webb images. The real dashboard runs on the lab's own hardware
+        with live data, so numbers, timing and some screens differ and it isn't fully representative of the real setup.
+        ${repo ? `<a href="${repo}" target="_blank" rel="noopener">How the real setup works →</a>` : ''}`;
+      s.textContent += `.demo-notice{margin:0 0 24px;padding:14px 18px;border-radius:10px;border:1px solid rgba(251,191,36,.45);
+        background:rgba(251,191,36,.10);color:#e5e7eb;font:14px/1.55 system-ui,sans-serif}
+        .demo-notice strong{color:#fbbf24;margin-right:4px}.demo-notice b{font-weight:600}
+        .demo-notice a{color:#7dd3fc;white-space:nowrap;margin-left:4px}`;
+      home.after(n);
+    }
   });
 })();
