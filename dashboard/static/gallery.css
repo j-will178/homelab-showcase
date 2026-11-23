@@ -1,23 +1,30 @@
-/* Space gallery (/space/gallery/): one release image at a time, full screen, caption below. */
+/* Space gallery (/space/gallery/): one release image at a time, filling the screen (cropped, never letterboxed),
+ * with the caption on a fade-up scrim over the bottom of the picture. Tall or very wide images pan slowly
+ * across the crop while they're shown (gallery.js sets object-position and its transition). */
 html, body.gallery-page { overflow: hidden; height: 100%; background: #04060b; }
-#gallery { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; height: 100vh; }
-#gStage { margin: 0; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; background: #000; }
-#gImg { max-width: 100%; max-height: 100%; object-fit: contain; display: block; opacity: 0; transition: opacity .8s ease; }
+#gallery { position: relative; height: 100vh; }
+#gStage { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+#gImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;
+  display: block; opacity: 0; transition: opacity .8s ease; }
 #gImg.on { opacity: 1; }
-.g-empty { color: var(--muted); font-family: var(--mono); font-size: 14px; }
-.g-cap { padding: 14px 28px 6px; }
-.g-meta { display: flex; gap: 12px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.g-tel { padding: 2px 9px; border-radius: 999px; font-weight: 600; color: #0b0f17; background: var(--tc, #a78bfa); }
+.g-empty { position: relative; color: var(--muted); font-family: var(--mono); font-size: 14px; }
+.g-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 140px 32px 0;
+  background: linear-gradient(to top, rgba(3, 4, 9, .92) 0%, rgba(3, 4, 9, .72) 38%, rgba(3, 4, 9, .3) 70%, rgba(3, 4, 9, 0) 100%);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .85); pointer-events: none; }
+.g-cap a, .g-cap button { pointer-events: auto; }
+.g-meta { display: flex; gap: 12px; align-items: center; font-family: var(--mono); font-size: 12px; color: #c9cede; }
+.g-tel { padding: 2px 9px; border-radius: 999px; font-weight: 600; color: #0b0f17; background: var(--tc, #a78bfa); text-shadow: none; }
 .g-count { margin-left: auto; }
-.g-cap h1 { margin: 6px 0 4px; font-size: 22px; font-weight: 600; }
-.g-cap p { margin: 0 0 6px; color: var(--text); font-size: 14px; line-height: 1.5; max-width: 1100px; }
-.g-credit { font-size: 12px !important; color: var(--muted) !important; }
+.g-cap h1 { margin: 6px 0 4px; font-size: 24px; font-weight: 600; color: #fff; }
+.g-cap p { margin: 0 0 6px; color: #e4e7f0; font-size: 14px; line-height: 1.5; max-width: 1100px; }
+#gSum { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.g-credit { font-size: 12px !important; color: #aab0c2 !important; }
 .g-credit a { color: var(--tc, var(--accent)); text-decoration: none; margin-left: 6px; }
-.g-dots { display: flex; gap: 6px; justify-content: center; padding: 6px 0 48px; }
-.g-dots button { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.g-dots { display: flex; gap: 6px; justify-content: center; padding: 8px 0 50px; }
+.g-dots button { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: rgba(255, 255, 255, .28); cursor: pointer; }
 .g-dots button.on { background: var(--tc, var(--accent)); }
 .g-nav { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; font-size: 12px; opacity: .85; }
+  background: rgba(10, 13, 22, .6); border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; padding: 5px 14px; font-size: 12px; opacity: .85; }
 .g-nav a { color: var(--text); text-decoration: none; }
 .g-nav a:hover { color: var(--accent); }
 .g-nav kbd { margin: 0 1px; }
